@@ -1,0 +1,30 @@
+services:
+  - type: web
+    name: easystore
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: 22.22.0
+      - key: HOST
+        value: 0.0.0.0
+      - key: EASYSTORE_STORE_ID
+        value: loja-matriz
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_MODEL
+        value: gpt-5-mini
+      - key: NCM_LOCAL_JSON_PATH
+        value: Tabela_NCM_Vigente_20260331.json
+      - key: NCM_CACHE_TTL_MS
+        value: 43200000
+      - key: AUTO_SYNC_NCM_ON_STARTUP
+        value: true
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false

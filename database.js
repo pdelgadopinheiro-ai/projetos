@@ -1,0 +1,611 @@
+(function () {
+    const STORAGE_KEY = 'easystore.state.v3';
+    const CONNECTION_KEY = 'easystore.connection.v2';
+
+    const DEFAULT_CONNECTION = {
+        provider: 'api',
+        apiBaseUrl: '',
+        storeId: ''
+    };
+
+    const DEFAULT_STATE = {
+        produtos: [],
+        vendas: [],
+        movimentos: [],
+        config: {
+            nomeLoja: '',
+            cnpj: '',
+            email: '',
+            pixChave: '',
+            pixCidade: '',
+            maquininhas: []
+        },
+        meta: {
+            updatedAt: null
+        }
+    };
+
+    class EasyStoreDatabase {
+        constructor() {
+            this.state = this.clone(DEFAULT_STATE);
+            this.connection = this.loadConnectionConfig();
+            this.syncStatus = {
+                mode: 'local',
+                connected: false,
+                message: 'Modo local ativo.',
+                lastSyncAt: null
+            };
+            this.writeQueue = Promise.resolve();
+        }
+
+        async init() {
+            this.state = this.loadLocalState();
+            await this.bootstrapConnection();
+            this.applySyncStatus();
+
+            if (!this.isCloudEnabled()) {
+                return this.state;
+            }
+
+            try {
+                const remoteState = await this.fetchRemoteState();
+
+                if (remoteState) {
+                    const localUpdatedAt = this.getUpdatedAt(this.state);
+                    const remoteUpdatedAt = this.getUpdatedAt(remoteState);
+
+                    if (remoteUpdatedAt >= localUpdatedAt) {
+                        this.state = this.normalizeState(remoteState);
+                        this.persistLocalState();
+                    } else {
+                        await this.persistRemoteState();
+                    }
+                } else {
+                    await this.persistRemoteState();
+                }
+
+                this.syncStatus.connected = true;
+                this.syncStatus.message = 'API em nuvem conectada e sincronizada.';
+                this.syncStatus.lastSyncAt = new Date().toISOString();
+            } catch (error) {
+                console.error('Falha ao inicializar a nuvem:', error);
+                this.syncStatus.connected = false;
+                this.syncStatus.message = 'Falha ao conectar com a API. O app continua em modo local.';
+            }
+
+            this.applySyncStatus();
+            return this.state;
+        }
+
+        getProdutos() {
+            return [...this.state.produtos].sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+        }
+
+        getProduto(id) {
+            return this.state.produtos.find((produto) => produto.id === id) || null;
+        }
+
+        async addProduto(dados) {
+            const produto = {
+                id: this.generateId('prod'),
+                codigo: this.generateProductCode(dados.categoria),
+                nome: dados.nome.trim(),
+                ncm: this.normalizeNcm(dados.ncm),
+                ncmKeywords: this.normalizeKeywords(dados.ncmKeywords),
+                categoria: dados.categoria,
+                custo: Number(dados.custo),
+                preco: Number(dados.preco),
+                estoque: Number(dados.estoque),
+                minimo: Number(dados.minimo),
+                criadoEm: new Date().toISOString(),
+                atualizadoEm: new Date().toISOString()
+            };
+
+            this.state.produtos.push(produto);
+            await this.commit();
+            return produto;
+        }
+
+        async editProduto(id, dados) {
+            const produto = this.getProduto(id);
+            if (!produto) {
+                throw new Error('Produto nao encontrado.');
+            }
+
+            Object.assign(produto, {
+                ...dados,
+                nome: typeof dados.nome === 'string' ? dados.nome.trim() : produto.nome,
+                ncm: this.normalizeNcm(dados.ncm ?? produto.ncm),
+                ncmKeywords: this.normalizeKeywords(dados.ncmKeywords ?? produto.ncmKeywords),
+                atualizadoEm: new Date().toISOString()
+            });
+
+            await this.commit();
+            return produto;
+        }
+
+        async deleteProduto(id) {
+            this.state.produtos = this.state.produtos.filter((produto) => produto.id !== id);
+            this.state.movimentos = this.state.movimentos.filter((movimento) => movimento.produtoId !== id);
+            await this.commit();
+        }
+
+        getVendas() {
+            return [...this.state.vendas].sort((a, b) => new Date(b.data) - new Date(a.data));
+        }
+
+        async addVenda(dados) {
+            const itens = dados.itens.map((item) => ({ ...item }));
+
+            itens.forEach((item) => {
+                const produto = this.getProduto(item.id);
+                if (!produto) {
+                    throw new Error(`Produto da venda nao encontrado: ${item.nome}`);
+                }
+                if (item.qtd > produto.estoque) {
+                    throw new Error(`Estoque insuficiente para ${produto.nome}.`);
+                }
+            });
+
+            itens.forEach((item) => {
+                const produto = this.getProduto(item.id);
+                produto.estoque -= item.qtd;
+                produto.atualizadoEm = new Date().toISOString();
+
+                this.state.movimentos.push({
+                    id: this.generateId('mov'),
+                    produtoId: produto.id,
+                    tipo: 'saida',
+                    qtd: item.qtd,
+                    obs: 'Baixa automatica por venda',
+                    data: new Date().toISOString()
+                });
+            });
+
+            this.state.vendas.push({
+                id: this.generateId('ven'),
+                itens,
+                total: Number(dados.total),
+                pagamento: dados.pagamento,
+                valorRecebido: Number(dados.valorRecebido || 0),
+                troco: Number(dados.troco || 0),
+                maquininhaId: dados.maquininhaId || '',
+                maquininhaNome: dados.maquininhaNome || '',
+                pix: dados.pix ? {
+                    chave: dados.pix.chave || '',
+                    payload: dados.pix.payload || '',
+                    qrCodeUrl: dados.pix.qrCodeUrl || ''
+                } : null,
+                data: new Date().toISOString()
+            });
+
+            await this.commit();
+        }
+
+        getMovimentos() {
+            return [...this.state.movimentos].sort((a, b) => new Date(b.data) - new Date(a.data));
+        }
+
+        async addMovimento(dados) {
+            const produto = this.getProduto(dados.produtoId);
+            if (!produto) {
+                throw new Error('Produto nao encontrado para movimentacao.');
+            }
+
+            const quantidade = Number(dados.qtd);
+            const quantidadeInvalida = !Number.isFinite(quantidade)
+                || quantidade < 0
+                || (dados.tipo !== 'ajuste' && quantidade === 0);
+
+            if (quantidadeInvalida) {
+                throw new Error('Quantidade invalida.');
+            }
+
+            if (dados.tipo === 'entrada') {
+                produto.estoque += quantidade;
+            } else if (dados.tipo === 'saida') {
+                produto.estoque = Math.max(0, produto.estoque - quantidade);
+            } else if (dados.tipo === 'ajuste') {
+                produto.estoque = quantidade;
+            }
+
+            produto.atualizadoEm = new Date().toISOString();
+
+            this.state.movimentos.push({
+                id: this.generateId('mov'),
+                produtoId: dados.produtoId,
+                tipo: dados.tipo,
+                qtd: quantidade,
+                obs: (dados.obs || '').trim(),
+                data: new Date().toISOString()
+            });
+
+            await this.commit();
+        }
+
+        getConfig() {
+            return { ...this.state.config };
+        }
+
+        async setConfig(config) {
+            this.state.config = {
+                ...this.state.config,
+                ...config,
+                maquininhas: Array.isArray(config.maquininhas)
+                    ? config.maquininhas.map((maquininha) => ({
+                        id: maquininha.id || this.generateId('maq'),
+                        nome: (maquininha.nome || '').trim(),
+                        modelo: (maquininha.modelo || '').trim(),
+                        conexao: maquininha.conexao || 'bluetooth',
+                        status: maquininha.status || 'disponivel',
+                        pareadoEm: maquininha.pareadoEm || null
+                    }))
+                    : this.state.config.maquininhas
+            };
+            await this.commit();
+        }
+
+        getConnectionConfig() {
+            return { ...this.connection };
+        }
+
+        async setConnectionConfig(config) {
+            this.connection = {
+                provider: config.provider || 'local',
+                apiBaseUrl: this.normalizeApiBaseUrl(config.apiBaseUrl),
+                storeId: (config.storeId || '').trim()
+            };
+
+            localStorage.setItem(CONNECTION_KEY, JSON.stringify(this.connection));
+            this.applySyncStatus();
+
+            if (this.isCloudEnabled()) {
+                await this.syncNow();
+            }
+        }
+
+        async syncNow() {
+            if (!this.isCloudEnabled()) {
+                this.syncStatus.connected = false;
+                this.syncStatus.message = 'API nao configurada. O app segue em modo local.';
+                this.applySyncStatus();
+                return false;
+            }
+
+            try {
+                const remoteState = await this.fetchRemoteState();
+                const localUpdatedAt = this.getUpdatedAt(this.state);
+                const remoteUpdatedAt = this.getUpdatedAt(remoteState);
+
+                if (!remoteState || localUpdatedAt >= remoteUpdatedAt) {
+                    await this.persistRemoteState();
+                } else {
+                    this.state = this.normalizeState(remoteState);
+                    this.persistLocalState();
+                }
+
+                this.syncStatus.connected = true;
+                this.syncStatus.message = 'Sincronizacao concluida com sucesso.';
+                this.syncStatus.lastSyncAt = new Date().toISOString();
+                this.applySyncStatus();
+                return true;
+            } catch (error) {
+                console.error('Falha ao sincronizar:', error);
+                this.syncStatus.connected = false;
+                this.syncStatus.message = `Erro na sincronizacao: ${error.message}`;
+                this.applySyncStatus();
+                throw error;
+            }
+        }
+
+        getSyncStatus() {
+            return { ...this.syncStatus };
+        }
+
+        countProdutos() {
+            return this.state.produtos.length;
+        }
+
+        totalEstoque() {
+            return this.state.produtos.reduce((total, produto) => total + Number(produto.estoque || 0), 0);
+        }
+
+        totalVendasHoje() {
+            const hoje = new Date().toISOString().slice(0, 10);
+            return this.state.vendas.reduce((total, venda) => {
+                return venda.data && venda.data.startsWith(hoje) ? total + Number(venda.total || 0) : total;
+            }, 0);
+        }
+
+        produtosBaixoEstoque() {
+            return this.getProdutos().filter((produto) => Number(produto.estoque) <= Number(produto.minimo));
+        }
+
+        exportar() {
+            return JSON.stringify({
+                exportedAt: new Date().toISOString(),
+                state: this.state,
+                connection: {
+                    provider: this.connection.provider,
+                    apiBaseUrl: this.connection.apiBaseUrl,
+                    storeId: this.connection.storeId
+                }
+            }, null, 2);
+        }
+
+        async limpar() {
+            this.state = this.clone(DEFAULT_STATE);
+            this.touch();
+            this.persistLocalState();
+
+            if (this.isCloudEnabled()) {
+                await this.persistRemoteState();
+            }
+        }
+
+        async commit() {
+            this.touch();
+            this.persistLocalState();
+
+            this.writeQueue = this.writeQueue.then(async () => {
+                if (this.isCloudEnabled()) {
+                    await this.persistRemoteState();
+                    this.syncStatus.connected = true;
+                    this.syncStatus.message = 'Dados atualizados localmente e pela API segura.';
+                    this.syncStatus.lastSyncAt = new Date().toISOString();
+                } else {
+                    this.syncStatus.connected = false;
+                    this.syncStatus.message = 'Dados salvos localmente.';
+                }
+                this.applySyncStatus();
+            });
+
+            return this.writeQueue;
+        }
+
+        touch() {
+            this.state.meta.updatedAt = new Date().toISOString();
+        }
+
+        loadLocalState() {
+            const raw = localStorage.getItem(STORAGE_KEY);
+            if (!raw) {
+                return this.clone(DEFAULT_STATE);
+            }
+
+            try {
+                return this.normalizeState(JSON.parse(raw));
+            } catch (error) {
+                console.error('Falha ao carregar o estado local:', error);
+                return this.clone(DEFAULT_STATE);
+            }
+        }
+
+        persistLocalState() {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(this.state));
+        }
+
+        loadConnectionConfig() {
+            const raw = localStorage.getItem(CONNECTION_KEY);
+            if (!raw) {
+                return { ...DEFAULT_CONNECTION };
+            }
+
+            try {
+                const saved = JSON.parse(raw);
+                return {
+                    provider: saved.provider || 'local',
+                    apiBaseUrl: this.normalizeApiBaseUrl(saved.apiBaseUrl),
+                    storeId: saved.storeId || ''
+                };
+            } catch (error) {
+                console.error('Falha ao carregar a conexao:', error);
+                return { ...DEFAULT_CONNECTION };
+            }
+        }
+
+        async bootstrapConnection() {
+            const configFromServer = await this.fetchRuntimeConfig();
+            if (!configFromServer) {
+                return;
+            }
+
+            const savedConnection = this.connection || { ...DEFAULT_CONNECTION };
+            const normalizedConnection = {
+                provider: savedConnection.provider || configFromServer.provider || 'api',
+                apiBaseUrl: this.normalizeApiBaseUrl(savedConnection.apiBaseUrl || configFromServer.apiBaseUrl),
+                storeId: (savedConnection.storeId || configFromServer.storeId || '').trim()
+            };
+
+            const shouldUseServerDefaults = normalizedConnection.provider !== 'api'
+                || !normalizedConnection.storeId
+                || this.looksLikeInvalidApiBaseUrl(normalizedConnection.apiBaseUrl);
+
+            if (shouldUseServerDefaults) {
+                this.connection = {
+                    provider: configFromServer.provider || 'api',
+                    apiBaseUrl: this.normalizeApiBaseUrl(configFromServer.apiBaseUrl),
+                    storeId: (configFromServer.storeId || '').trim()
+                };
+                localStorage.setItem(CONNECTION_KEY, JSON.stringify(this.connection));
+                return;
+            }
+
+            this.connection = normalizedConnection;
+        }
+
+        normalizeState(state) {
+            const merged = {
+                ...this.clone(DEFAULT_STATE),
+                ...state,
+                config: {
+                    ...DEFAULT_STATE.config,
+                    ...(state && state.config ? state.config : {})
+                },
+                meta: {
+                    ...DEFAULT_STATE.meta,
+                    ...(state && state.meta ? state.meta : {})
+                }
+            };
+
+            merged.produtos = Array.isArray(merged.produtos) ? merged.produtos : [];
+            merged.vendas = Array.isArray(merged.vendas) ? merged.vendas : [];
+            merged.movimentos = Array.isArray(merged.movimentos) ? merged.movimentos : [];
+            merged.config.maquininhas = Array.isArray(merged.config.maquininhas) ? merged.config.maquininhas : [];
+            merged.produtos = merged.produtos.map((produto) => ({
+                ...produto,
+                ncm: this.normalizeNcm(produto.ncm),
+                ncmKeywords: this.normalizeKeywords(produto.ncmKeywords)
+            }));
+            merged.vendas = merged.vendas.map((venda) => ({
+                ...venda,
+                valorRecebido: Number(venda.valorRecebido || 0),
+                troco: Number(venda.troco || 0),
+                maquininhaId: venda.maquininhaId || '',
+                maquininhaNome: venda.maquininhaNome || '',
+                pix: venda.pix ? {
+                    chave: venda.pix.chave || '',
+                    payload: venda.pix.payload || '',
+                    qrCodeUrl: venda.pix.qrCodeUrl || ''
+                } : null
+            }));
+            merged.config.maquininhas = merged.config.maquininhas.map((maquininha) => ({
+                id: maquininha.id || this.generateId('maq'),
+                nome: (maquininha.nome || '').trim(),
+                modelo: (maquininha.modelo || '').trim(),
+                conexao: maquininha.conexao || 'bluetooth',
+                status: maquininha.status || 'disponivel',
+                pareadoEm: maquininha.pareadoEm || null
+            }));
+
+            return merged;
+        }
+
+        clone(value) {
+            return JSON.parse(JSON.stringify(value));
+        }
+
+        getUpdatedAt(state) {
+            if (!state || !state.meta || !state.meta.updatedAt) {
+                return 0;
+            }
+            return new Date(state.meta.updatedAt).getTime();
+        }
+
+        generateId(prefix) {
+            return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        }
+
+        generateProductCode(category) {
+            const map = {
+                cosmeticos: 'COS',
+                perfumes: 'PER',
+                higiene: 'HIG',
+                alimentos: 'ALI',
+                outros: 'OUT'
+            };
+            const prefix = map[category] || 'PRD';
+            const sameCategoryCount = this.state.produtos.filter((produto) => produto.codigo && produto.codigo.startsWith(prefix)).length + 1;
+            return `${prefix}${String(sameCategoryCount).padStart(5, '0')}`;
+        }
+
+        normalizeNcm(value) {
+            const digits = String(value || '').replace(/\D/g, '').slice(0, 8);
+            if (digits.length !== 8) {
+                return '';
+            }
+            return `${digits.slice(0, 4)}.${digits.slice(4, 6)}.${digits.slice(6, 8)}`;
+        }
+
+        normalizeKeywords(value) {
+            return String(value || '').trim();
+        }
+
+        normalizeApiBaseUrl(value) {
+            if (!value || !value.trim()) {
+                return '';
+            }
+            return value.trim().replace(/\/+$/, '');
+        }
+
+        looksLikeInvalidApiBaseUrl(value) {
+            return value.includes('/index.html') || value.includes('/app.js') || value.includes('/database.js');
+        }
+
+        getApiBaseUrl() {
+            return this.connection.apiBaseUrl || window.location.origin;
+        }
+
+        isCloudEnabled() {
+            return this.connection.provider === 'api'
+                && Boolean(this.connection.storeId);
+        }
+
+        applySyncStatus() {
+            this.syncStatus.mode = this.isCloudEnabled() ? 'cloud' : 'local';
+            if (!this.isCloudEnabled()) {
+                this.syncStatus.message = 'Modo local ativo.';
+            }
+        }
+
+        async fetchRemoteState() {
+            const response = await this.request(`/api/state/${encodeURIComponent(this.connection.storeId)}`);
+            return response && response.payload ? this.normalizeState(response.payload) : null;
+        }
+
+        async persistRemoteState() {
+            await this.request(`/api/state/${encodeURIComponent(this.connection.storeId)}`, {
+                method: 'PUT',
+                body: JSON.stringify({ payload: this.state })
+            });
+        }
+
+        async request(path, options = {}) {
+            const response = await fetch(`${this.getApiBaseUrl()}${path}`, {
+                method: options.method || 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...(options.headers || {})
+                },
+                body: options.body
+            });
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(errorText || `HTTP ${response.status}`);
+            }
+
+            if (response.status === 204) {
+                return null;
+            }
+
+            const text = await response.text();
+            if (!text) {
+                return null;
+            }
+
+            return JSON.parse(text);
+        }
+
+        async fetchRuntimeConfig() {
+            try {
+                const origin = window.location.origin;
+                if (!origin || origin === 'null') {
+                    return null;
+                }
+
+                const response = await fetch(`${origin}/api/config`);
+                if (!response.ok) {
+                    return null;
+                }
+
+                const text = await response.text();
+                return text ? JSON.parse(text) : null;
+            } catch (error) {
+                return null;
+            }
+        }
+    }
+
+    window.db = new EasyStoreDatabase();
+})();

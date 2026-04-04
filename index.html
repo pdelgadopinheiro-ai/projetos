@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EasyStore - Sistema de Gestão Comercial</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="app-shell">
+        <aside class="sidebar">
+            <div class="logo">
+                <h1>EasyStore</h1>
+                <p>Gestão comercial </p>
+            </div>
+
+            <nav class="menu">
+                <button class="menu-btn active" data-section="dashboard">Dashboard</button>
+                <button class="menu-btn" data-section="produtos">Produtos</button>
+                <button class="menu-btn" data-section="vendas">Vendas</button>
+                <button class="menu-btn" data-section="estoque">Estoque</button>
+                <button class="menu-btn" data-section="relatorios">Relatórios</button>
+                <button class="menu-btn" data-section="config">Configurações</button>
+            </nav>
+        </aside>
+
+        <main class="main-content">
+            <header class="header">
+                <div>
+                    <h2 id="section-title">Dashboard</h2>
+                    <p class="header-subtitle">Controle de estoque, vendas e sincronização em nuvem.</p>
+                </div>
+                <div class="header-meta">
+                    <span id="sync-badge" class="sync-badge">Modo local</span>
+                    <span id="current-date"></span>
+                </div>
+            </header>
+
+            <section id="dashboard" class="section active">
+                <div class="stats-grid">
+                    <article class="stat-card">
+                        <h3>Total de Produtos</h3>
+                        <p class="stat-number" id="stat-produtos">0</p>
+                    </article>
+                    <article class="stat-card">
+                        <h3>Estoque Total</h3>
+                        <p class="stat-number" id="stat-estoque">0</p>
+                    </article>
+                    <article class="stat-card">
+                        <h3>Vendas Hoje</h3>
+                        <p class="stat-number" id="stat-vendas">R$ 0,00</p>
+                    </article>
+                    <article class="stat-card alert-card">
+                        <h3>Estoque Baixo</h3>
+                        <p class="stat-number" id="stat-baixo">0</p>
+                    </article>
+                </div>
+
+                <div class="panel-grid">
+                    <section class="panel">
+                        <div class="panel-title-row">
+                            <h3>Ultimas vendas</h3>
+                        </div>
+                        <div class="table-wrap">
+                            <table class="table">
+                                <thead>
+                                    <tr>
+                                        <th>Data</th>
+                                        <th>Itens</th>
+                                        <th>Total</th>
+                                        <th>Pagamento</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tb-vendas-dashboard">
+                                    <tr><td colspan="4" class="empty">Nenhuma venda registrada</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+
+                    <section class="panel">
+                        <div class="panel-title-row">
+                            <h3>Alertas de estoque</h3>
+                        </div>
+                        <div class="table-wrap">
+                            <table class="table-compact">
+                                <thead>
+                                    <tr>
+                                        <th>Produto</th>
+                                        <th>Estoque</th>
+                                        <th>Minimo</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tb-baixo-dashboard">
+                                    <tr><td colspan="3" class="empty">Tudo em ordem</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+                </div>
+            </section>
+
+            <section id="produtos" class="section">
+                <div class="section-header">
+                    <h3>Gerenciar Produtos</h3>
+                    <button class="btn btn-primary" id="btn-novo-prod">Novo Produto</button>
+                </div>
+
+                <div class="filters">
+                    <input type="text" id="search-prod" placeholder="Buscar por nome ou codigo">
+                    <select id="filter-cat">
+                        <option value="">Todas as categorias</option>
+                        <option value="cosmeticos">Cosmeticos</option>
+                        <option value="perfumes">Perfumes</option>
+                        <option value="higiene">Higiene</option>
+                        <option value="alimentos">Alimentos</option>
+                        <option value="outros">Outros</option>
+                    </select>
+                </div>
+
+                <div class="table-wrap">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Código</th>
+                                <th>Nome</th>
+                                <th>NCM</th>
+                                <th>Categoria</th>
+                                <th>Custo</th>
+                                <th>Preço</th>
+                                <th>Estoque</th>
+                                <th>Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tb-produtos">
+                            <tr><td colspan="8" class="empty">Nenhum produto cadastrado</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <section id="vendas" class="section">
+                <div class="section-header">
+                    <h3>Registrar Venda</h3>
+                </div>
+
+                <div class="sales-grid">
+                    <section class="panel">
+                        <h4>Adicionar itens</h4>
+                        <div class="form-group">
+                            <label for="select-venda-prod">Produto</label>
+                            <select id="select-venda-prod">
+                                <option value="">Selecione...</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="venda-qty">Quantidade</label>
+                            <input type="number" id="venda-qty" min="1" value="1">
+                        </div>
+                        <button class="btn btn-primary" id="btn-add-item">Adicionar Item</button>
+                    </section>
+
+                    <section class="panel">
+                        <h4>Itens da venda</h4>
+                        <div class="table-wrap compact-wrap">
+                            <table class="table-compact">
+                                <thead>
+                                    <tr>
+                                        <th>Produto</th>
+                                        <th>Qtd</th>
+                                        <th>Subtotal</th>
+                                        <th></th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tb-itens">
+                                    <tr><td colspan="4" class="empty">Nenhum item</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div class="sale-footer">
+                            <p class="sale-total">Total: <strong id="venda-total">R$ 0,00</strong></p>
+                            <div class="form-group">
+                                <label for="venda-pagamento">Forma de pagamento</label>
+                                <select id="venda-pagamento">
+                                    <option value="dinheiro">Dinheiro</option>
+                                    <option value="debito">Debito</option>
+                                    <option value="credito">Crédito</option>
+                                    <option value="pix">PIX</option>
+                                </select>
+                            </div>
+                            <div id="card-fields" class="payment-box" hidden>
+                                <div class="form-group">
+                                    <label for="venda-maquininha">Maquininha vinculada</label>
+                                    <select id="venda-maquininha">
+                                        <option value="">Selecione a maquininha</option>
+                                    </select>
+                                </div>
+                                <p id="maquininha-status-venda" class="status-text compact-text">Cadastre e pareie uma maquininha na aba Configurações.</p>
+                            </div>
+                            <div id="pix-fields" class="payment-box" hidden>
+                                <div class="pix-card">
+                                    <p class="pix-label">Chave PIX ativa</p>
+                                    <strong id="pix-chave-exibicao">Nenhuma chave PIX configurada.</strong>
+                                    <p id="pix-beneficiario" class="status-text compact-text"></p>
+                                </div>
+                                <div id="pix-qrcode-area" class="pix-qrcode-area empty-state">
+                                    Configure a chave PIX da loja para gerar o QR Code automaticamente.
+                                </div>
+                            </div>
+                            <div id="money-fields" class="payment-box" hidden>
+                                <div class="money-grid">
+                                    <div class="form-group">
+                                        <label for="venda-valor-recebido">Valor recebido</label>
+                                        <input type="number" id="venda-valor-recebido" min="0" step="0.01" placeholder="0,00">
+                                    </div>
+                                    <div class="change-card">
+                                        <span>Troco</span>
+                                        <strong id="venda-troco">R$ 0,00</strong>
+                                        <small id="troco-status">Informe o valor recebido para calcular o troco.</small>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="action-row">
+                                <button class="btn btn-success" id="btn-finalizar-venda">Finalizar Venda</button>
+                                <button class="btn btn-secondary" id="btn-cancelar-venda">Cancelar</button>
+                            </div>
+                        </div>
+                    </section>
+                </div>
+
+                <h4 class="subsection-title">Historico de vendas</h4>
+                <div class="table-wrap">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Data</th>
+                                <th>Itens</th>
+                                <th>Total</th>
+                                <th>Pagamento</th>
+                                <th>Detalhes</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tb-vendas">
+                            <tr><td colspan="5" class="empty">Nenhuma venda registrada</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <section id="estoque" class="section">
+                <div class="section-header">
+                    <h3>Movimentação de Estoque</h3>
+                </div>
+
+                <div class="stock-grid">
+                    <section class="panel">
+                        <h4>Registrar movimento</h4>
+                        <div class="form-group">
+                            <label for="select-mov-prod">Produto</label>
+                            <select id="select-mov-prod">
+                                <option value="">Selecione...</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="mov-tipo">Tipo</label>
+                            <select id="mov-tipo">
+                                <option value="entrada">Entrada</option>
+                                <option value="saida">Saida</option>
+                                <option value="ajuste">Ajuste</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="mov-qty">Quantidade</label>
+                            <input type="number" id="mov-qty" min="1" value="1">
+                        </div>
+                        <div class="form-group">
+                            <label for="mov-obs">Observação</label>
+                            <textarea id="mov-obs" placeholder="Ex: compra de fornecedor"></textarea>
+                        </div>
+                        <button class="btn btn-primary" id="btn-reg-mov">Registrar</button>
+
+                        <hr class="divider">
+
+                        <h4>Atualização rápida por código</h4>
+                        <div class="form-group">
+                            <label for="codigo-rapido">Código do produto</label>
+                            <input type="text" id="codigo-rapido" placeholder="Ex: COS00001">
+                        </div>
+                        <div class="form-group">
+                            <label for="qty-rapido">Quantidade</label>
+                            <input type="number" id="qty-rapido" min="0" value="1">
+                        </div>
+                        <div class="form-group">
+                            <label for="tipo-rapido">Tipo</label>
+                            <select id="tipo-rapido">
+                                <option value="entrada">Entrada</option>
+                                <option value="saida">Saida</option>
+                                <option value="ajuste">Ajuste (define o estoque)</option>
+                            </select>
+                        </div>
+                        <button class="btn btn-primary" id="btn-rapido">Aplicar por Código</button>
+                    </section>
+
+                    <section class="panel">
+                        <h4>Produtos com estoque baixo</h4>
+                        <div class="table-wrap compact-wrap">
+                            <table class="table-compact">
+                                <thead>
+                                    <tr>
+                                        <th>Produto</th>
+                                        <th>Estoque</th>
+                                        <th>Minimo</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tb-baixo">
+                                    <tr><td colspan="3" class="empty">Tudo em ordem</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+                </div>
+
+                <h4 class="subsection-title">Historico de movimentações</h4>
+                <div class="table-wrap">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Data</th>
+                                <th>Produto</th>
+                                <th>Tipo</th>
+                                <th>Quantidade</th>
+                                <th>Observação</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tb-mov">
+                            <tr><td colspan="5" class="empty">Nenhuma movimentação registrada</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <section id="relatorios" class="section">
+                <div class="section-header">
+                    <h3>Relatórios</h3>
+                </div>
+
+                <div class="report-buttons">
+                    <button class="btn btn-primary" id="btn-rel-prod">Produtos</button>
+                    <button class="btn btn-primary" id="btn-rel-vend">Vendas</button>
+                    <button class="btn btn-primary" id="btn-rel-estq">Estoque</button>
+                    <button class="btn btn-primary" id="btn-rel-mov">Movimentação</button>
+                </div>
+
+                <div id="relatorio-area" class="panel relatorio-area">
+                    <p>Selecione um relatório para visualizar.</p>
+                </div>
+            </section>
+
+            <section id="config" class="section">
+                <div class="section-header">
+                    <h3>Configurações</h3>
+                </div>
+
+                <div class="config-grid">
+                    <section class="config-card">
+                        <h4>Informações da loja</h4>
+                        <div class="form-group">
+                            <label for="cfg-nome">Nome</label>
+                            <input type="text" id="cfg-nome" placeholder="Nome da loja">
+                        </div>
+                        <div class="form-group">
+                            <label for="cfg-cnpj">CNPJ ou CPF</label>
+                            <input type="text" id="cfg-cnpj" placeholder="00.000.000/0000-00">
+                        </div>
+                        <div class="form-group">
+                            <label for="cfg-email">Email</label>
+                            <input type="email" id="cfg-email" placeholder="contato@loja.com">
+                        </div>
+                        <div class="form-group">
+                            <label for="cfg-pix-chave">Chave PIX</label>
+                            <input type="text" id="cfg-pix-chave" placeholder="CPF, CNPJ, email, telefone ou chave aleatoria">
+                        </div>
+                        <div class="form-group">
+                            <label for="cfg-pix-cidade">Cidade do recebedor</label>
+                            <input type="text" id="cfg-pix-cidade" placeholder="Ex: Cuiaba">
+                        </div>
+                        <button class="btn btn-primary" id="btn-salvar-cfg">Salvar Loja</button>
+                    </section>
+
+                    <section class="config-card">
+                        <h4>Maquininhas</h4>
+                        <div class="form-group">
+                            <label for="cfg-maq-nome">Nome exibido</label>
+                            <input type="text" id="cfg-maq-nome" placeholder="Ex: Caixa principal">
+                        </div>
+                        <div class="form-group">
+                            <label for="cfg-maq-modelo">Modelo</label>
+                            <input type="text" id="cfg-maq-modelo" placeholder="Ex: Moderninha Smart 2">
+                        </div>
+                        <div class="form-group">
+                            <label for="cfg-maq-conexao">Conexão</label>
+                            <select id="cfg-maq-conexao">
+                                <option value="bluetooth">Bluetooth</option>
+                                <option value="wifi">Wi-Fi</option>
+                                <option value="usb">USB</option>
+                            </select>
+                        </div>
+                        <div class="action-row">
+                            <button class="btn btn-primary" id="btn-add-maq">Cadastrar Maquininha</button>
+                            <button class="btn btn-secondary" id="btn-parear-maq">Parear Selecionada</button>
+                        </div>
+                        <div class="table-wrap compact-wrap">
+                            <table class="table-compact">
+                                <thead>
+                                    <tr>
+                                        <th>Nome</th>
+                                        <th>Modelo</th>
+                                        <th>Conexão</th>
+                                        <th>Status</th>
+                                        <th></th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tb-maquininhas">
+                                    <tr><td colspan="5" class="empty">Nenhuma maquininha cadastrada</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+
+                    <section class="config-card">
+                        <h4>Status da Conexão</h4>
+                        <p id="cloud-status" class="status-text">O app ainda esta operando em modo local.</p>
+                        <p class="status-text">A conexão com o banco e feita automaticamente pelo backend.</p>
+                    </section>
+
+                    <section class="config-card">
+                        <h4>Dados</h4>
+                        <div class="action-column">
+                            <button class="btn btn-warning" id="btn-export">Exportar Backup</button>
+                            <button class="btn btn-danger" id="btn-limpar">Limpar Todos os Dados</button>
+                        </div>
+                    </section>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <div id="modal-prod" class="modal" aria-hidden="true">
+        <div class="modal-content">
+            <button class="close" type="button" aria-label="Fechar modal">&times;</button>
+            <h2 id="modal-title">Novo Produto</h2>
+            <form id="form-prod">
+                <div class="form-group">
+                    <label for="prod-cod-display">Código</label>
+                    <input type="text" id="prod-cod-display" readonly placeholder="Sera gerado automaticamente">
+                </div>
+                <div class="form-group">
+                    <label for="prod-nome">Nome</label>
+                    <input type="text" id="prod-nome" required>
+                </div>
+                <div class="form-group">
+                    <label for="prod-cat">Categoria</label>
+                    <select id="prod-cat" required>
+                        <option value="">Selecione</option>
+                        <option value="cosmeticos">Cosmeticos</option>
+                        <option value="perfumes">Perfumes</option>
+                        <option value="higiene">Higiene</option>
+                        <option value="alimentos">Alimentos</option>
+                        <option value="outros">Outros</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="prod-ncm-keywords">Palavras-chave para NCM</label>
+                    <textarea id="prod-ncm-keywords" placeholder="Ex: floral, extrato, eau de parfum, hidratante, capilar"></textarea>
+                    <small class="field-help">Use termos do tipo, aroma, composição, uso ou família do produto para melhorar a busca do NCM.</small>
+                </div>
+                <div class="form-group">
+                    <label for="prod-ncm">NCM</label>
+                    <input type="text" id="prod-ncm" inputmode="numeric" maxlength="10" placeholder="0000.00.00">
+                    <small id="prod-ncm-help" class="field-help">A API consulta a base oficial da Receita Federal e tenta sugerir o NCM automaticamente.</small>
+                    <div id="prod-ncm-suggestions" class="ncm-suggestions" hidden></div>
+                    <div id="prod-ncm-validation" class="ncm-validation" hidden></div>
+                </div>
+                <div class="form-group">
+                    <label for="prod-custo">Preço de custo</label>
+                    <input type="number" id="prod-custo" min="0" step="0.01" required>
+                </div>
+                <div class="form-group">
+                    <label for="prod-preco">Preço de venda</label>
+                    <input type="number" id="prod-preco" min="0" step="0.01" required>
+                </div>
+                <div class="form-group">
+                    <label for="prod-estoque">Estoque inicial</label>
+                    <input type="number" id="prod-estoque" min="0" required>
+                </div>
+                <div class="form-group">
+                    <label for="prod-minimo">Estoque minimo</label>
+                    <input type="number" id="prod-minimo" min="1" value="10" required>
+                </div>
+                <div class="form-buttons">
+                    <button type="button" class="btn btn-primary" id="btn-validar-ncm">Verificar NCM</button>
+                    <button type="submit" class="btn btn-success">Salvar</button>
+                    <button type="button" class="btn btn-secondary" id="btn-cancel-prod">Cancelar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="toast-root" class="toast-root" aria-live="polite" aria-atomic="true"></div>
+
+    <script src="database.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
