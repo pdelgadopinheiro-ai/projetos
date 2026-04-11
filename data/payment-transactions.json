@@ -1,0 +1,164 @@
+[
+  {
+    "id": 1,
+    "savedAt": "2026-04-07T16:23:16.371Z",
+    "orderId": "VENDA-1775578996368",
+    "providerName": "stone",
+    "paymentMethod": "debit",
+    "amount": 10,
+    "currency": "BRL",
+    "terminal": {
+      "provider": "InfinitePay",
+      "model": "Infinite Smart",
+      "serialNumber": "maq_1775578897723"
+    },
+    "providerTransactionId": "mock_1775578996369",
+    "authorizationCode": "",
+    "status": "declined",
+    "approved": false,
+    "raw": {
+      "simulated": true,
+      "provider": "stone",
+      "terminal": {
+        "provider": "InfinitePay",
+        "model": "Infinite Smart",
+        "serialNumber": "maq_1775578897723"
+      }
+    }
+  },
+  {
+    "id": 2,
+    "savedAt": "2026-04-07T16:23:20.151Z",
+    "orderId": "VENDA-1775579000149",
+    "providerName": "stone",
+    "paymentMethod": "debit",
+    "amount": 10,
+    "currency": "BRL",
+    "terminal": {
+      "provider": "InfinitePay",
+      "model": "Infinite Smart",
+      "serialNumber": "maq_1775578897723"
+    },
+    "providerTransactionId": "mock_1775579000149",
+    "authorizationCode": "",
+    "status": "declined",
+    "approved": false,
+    "raw": {
+      "simulated": true,
+      "provider": "stone",
+      "terminal": {
+        "provider": "InfinitePay",
+        "model": "Infinite Smart",
+        "serialNumber": "maq_1775578897723"
+      }
+    }
+  },
+  {
+    "id": 3,
+    "savedAt": "2026-04-07T16:23:21.060Z",
+    "orderId": "VENDA-1775579001059",
+    "providerName": "stone",
+    "paymentMethod": "debit",
+    "amount": 10,
+    "currency": "BRL",
+    "terminal": {
+      "provider": "InfinitePay",
+      "model": "Infinite Smart",
+      "serialNumber": "maq_1775578897723"
+    },
+    "providerTransactionId": "mock_1775579001059",
+    "authorizationCode": "",
+    "status": "declined",
+    "approved": false,
+    "raw": {
+      "simulated": true,
+      "provider": "stone",
+      "terminal": {
+        "provider": "InfinitePay",
+        "model": "Infinite Smart",
+        "serialNumber": "maq_1775578897723"
+      }
+    }
+  },
+  {
+    "id": 4,
+    "savedAt": "2026-04-07T16:23:23.937Z",
+    "orderId": "VENDA-1775579003935",
+    "providerName": "stone",
+    "paymentMethod": "debit",
+    "amount": 10,
+    "currency": "BRL",
+    "terminal": {
+      "provider": "InfinitePay",
+      "model": "Infinite Smart",
+      "serialNumber": "maq_1775578897723"
+    },
+    "providerTransactionId": "mock_1775579003936",
+    "authorizationCode": "",
+    "status": "declined",
+    "approved": false,
+    "raw": {
+      "simulated": true,
+      "provider": "stone",
+      "terminal": {
+        "provider": "InfinitePay",
+        "model": "Infinite Smart",
+        "serialNumber": "maq_1775578897723"
+      }
+    }
+  },
+  {
+    "id": 5,
+    "savedAt": "2026-04-07T16:24:03.395Z",
+    "orderId": "VENDA-1775579043081",
+    "providerName": "stone",
+    "paymentMethod": "debit",
+    "amount": 10,
+    "currency": "BRL",
+    "terminal": {
+      "provider": "InfinitePay",
+      "model": "Infinite Smart",
+      "serialNumber": "maq_1775578897723"
+    },
+    "providerTransactionId": "mock_1775579043394",
+    "authorizationCode": "",
+    "status": "declined",
+    "approved": false,
+    "raw": {
+      "simulated": true,
+      "provider": "stone",
+      "terminal": {
+        "provider": "InfinitePay",
+        "model": "Infinite Smart",
+        "serialNumber": "maq_1775578897723"
+      }
+    }
+  },
+  {
+    "id": 6,
+    "savedAt": "2026-04-07T16:25:09.846Z",
+    "orderId": "VENDA-1775579109515",
+    "providerName": "stone",
+    "paymentMethod": "debit",
+    "amount": 10,
+    "currency": "BRL",
+    "terminal": {
+      "provider": "InfinitePay",
+      "model": "Infinite Smart",
+      "serialNumber": "maq_1775578897723"
+    },
+    "providerTransactionId": "mock_1775579109844",
+    "authorizationCode": "",
+    "status": "declined",
+    "approved": false,
+    "raw": {
+      "simulated": true,
+      "provider": "stone",
+      "terminal": {
+        "provider": "InfinitePay",
+        "model": "Infinite Smart",
+        "serialNumber": "maq_1775578897723"
+      }
+    }
+  }
+]

@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
@@ -59,7 +59,7 @@
                 <div class="panel-grid">
                     <section class="panel">
                         <div class="panel-title-row">
-                            <h3>Ultimas vendas</h3>
+                            <h3>Últimas vendas</h3>
                         </div>
                         <div class="table-wrap">
                             <table class="table">
@@ -88,7 +88,7 @@
                                     <tr>
                                         <th>Produto</th>
                                         <th>Estoque</th>
-                                        <th>Minimo</th>
+                                        <th>Mínimo</th>
                                     </tr>
                                 </thead>
                                 <tbody id="tb-baixo-dashboard">
@@ -107,10 +107,10 @@
                 </div>
 
                 <div class="filters">
-                    <input type="text" id="search-prod" placeholder="Buscar por nome ou codigo">
+                    <input type="text" id="search-prod" placeholder="Buscar por nome ou código">
                     <select id="filter-cat">
                         <option value="">Todas as categorias</option>
-                        <option value="cosmeticos">Cosmeticos</option>
+                        <option value="cosmeticos">Cosméticos</option>
                         <option value="perfumes">Perfumes</option>
                         <option value="higiene">Higiene</option>
                         <option value="alimentos">Alimentos</option>
@@ -141,111 +141,166 @@
 
             <section id="vendas" class="section">
                 <div class="section-header">
-                    <h3>Registrar Venda</h3>
+                    <div>
+                        <h3>Frente de caixa</h3>
+                        <p class="section-note">Fluxo rápido para leitura de código, conferência do carrinho e fechamento da venda.</p>
+                    </div>
                 </div>
 
                 <div class="sales-grid">
-                    <section class="panel">
-                        <h4>Adicionar itens</h4>
-                        <div class="form-group">
-                            <label for="select-venda-prod">Produto</label>
-                            <select id="select-venda-prod">
-                                <option value="">Selecione...</option>
-                            </select>
+                    <section class="panel pos-panel">
+                        <div class="panel-title-row">
+                            <h4>Leitura e inclusão de itens</h4>
+                            <span class="operator-pill">Modo PDV</span>
                         </div>
-                        <div class="form-group">
-                            <label for="venda-qty">Quantidade</label>
-                            <input type="number" id="venda-qty" min="1" value="1">
-                        </div>
-                        <button class="btn btn-primary" id="btn-add-item">Adicionar Item</button>
-                    </section>
 
-                    <section class="panel">
-                        <h4>Itens da venda</h4>
-                        <div class="table-wrap compact-wrap">
+                        <div class="pos-entry-grid">
+                            <div class="form-group">
+                                <label for="select-venda-prod">Produto</label>
+                                <select id="select-venda-prod">
+                                    <option value="">Selecione...</option>
+                                </select>
+                            </div>
+                            <div class="form-group qty-field">
+                                <label for="venda-qty">Quantidade</label>
+                                <input type="number" id="venda-qty" min="1" value="1">
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="venda-scan-input">Código de barras</label>
+                            <div class="input-with-actions">
+                                <input type="text" id="venda-scan-input" placeholder="Informe ou escaneie o código" autocomplete="off">
+                                <button type="button" class="btn btn-secondary" id="btn-open-scanner">Abrir leitor</button>
+                            </div>
+                        </div>
+
+                        <div class="action-row sale-entry-actions">
+                            <button class="btn btn-primary" id="btn-add-item">Adicionar item</button>
+                            <button class="btn btn-secondary" id="btn-scan-add">Adicionar por código</button>
+                        </div>
+                        <p id="venda-add-status" class="status-text compact-text sale-entry-status">Caixa pronto para leitura. Se preferir, use o leitor para incluir produtos rapidamente.</p>
+
+                        <div class="table-wrap compact-wrap pos-cart-wrap">
                             <table class="table-compact">
                                 <thead>
                                     <tr>
                                         <th>Produto</th>
                                         <th>Qtd</th>
+                                        <th>Preço un.</th>
                                         <th>Subtotal</th>
                                         <th></th>
                                     </tr>
                                 </thead>
                                 <tbody id="tb-itens">
-                                    <tr><td colspan="4" class="empty">Nenhum item</td></tr>
+                                    <tr><td colspan="5" class="empty">Nenhum item</td></tr>
                                 </tbody>
                             </table>
                         </div>
+                    </section>
 
-                        <div class="sale-footer">
-                            <p class="sale-total">Total: <strong id="venda-total">R$ 0,00</strong></p>
+                    <section class="panel pos-summary-panel">
+                        <h4>Resumo e pagamento</h4>
+
+                        <div class="sale-total-card">
+                            <span>Total da compra</span>
+                            <strong id="venda-total">R$ 0,00</strong>
+                            <small id="sale-status-text">Nenhum item no carrinho.</small>
+                        </div>
+
+                        <div class="sale-kpi-grid">
+                            <article class="sale-kpi">
+                                <span>Itens</span>
+                                <strong id="sale-item-count">0</strong>
+                            </article>
+                            <article class="sale-kpi">
+                                <span>Unidades</span>
+                                <strong id="sale-unit-count">0</strong>
+                            </article>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="venda-pagamento">Forma de pagamento</label>
+                            <select id="venda-pagamento">
+                                <option value="dinheiro">Dinheiro</option>
+                                <option value="debito">Débito</option>
+                                <option value="credito">Crédito</option>
+                                <option value="pix">PIX</option>
+                            </select>
+                        </div>
+
+                        <div class="quick-pay-grid">
+                            <button type="button" class="quick-pay-btn" data-sale-pay="dinheiro">Dinheiro (F1)</button>
+                            <button type="button" class="quick-pay-btn" data-sale-pay="debito">Débito (F2)</button>
+                            <button type="button" class="quick-pay-btn" data-sale-pay="credito">Crédito (F3)</button>
+                            <button type="button" class="quick-pay-btn" data-sale-pay="pix">PIX (F4)</button>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="venda-perfil-fiscal">Perfil fiscal</label>
+                            <select id="venda-perfil-fiscal">
+                                <option value="varejo">Varejo (NFC-e)</option>
+                                <option value="atacado">Atacado (NF-e)</option>
+                                <option value="servico">Serviço (NFS-e)</option>
+                            </select>
+                        </div>
+
+                        <div id="card-fields" class="payment-box" hidden>
                             <div class="form-group">
-                                <label for="venda-pagamento">Forma de pagamento</label>
-                                <select id="venda-pagamento">
-                                    <option value="dinheiro">Dinheiro</option>
-                                    <option value="debito">Debito</option>
-                                    <option value="credito">Crédito</option>
-                                    <option value="pix">PIX</option>
+                                <label for="venda-maquininha">Maquininha vinculada</label>
+                                <select id="venda-maquininha">
+                                    <option value="">Selecione a maquininha</option>
                                 </select>
                             </div>
-                            <div id="card-fields" class="payment-box" hidden>
+                            <p id="maquininha-status-venda" class="status-text compact-text">Cadastre e pareie uma maquininha na aba Configurações.</p>
+                        </div>
+
+                        <div id="pix-fields" class="payment-box" hidden>
+                            <div class="pix-card">
+                                <p class="pix-label">Chave PIX ativa</p>
+                                <strong id="pix-chave-exibicao">Nenhuma chave PIX configurada.</strong>
+                                <p id="pix-beneficiario" class="status-text compact-text"></p>
+                            </div>
+                            <div id="pix-qrcode-area" class="pix-qrcode-area empty-state">
+                                Configure a chave PIX da loja para gerar o QR Code automaticamente.
+                            </div>
+                        </div>
+
+                        <div id="money-fields" class="payment-box" hidden>
+                            <div class="money-grid">
                                 <div class="form-group">
-                                    <label for="venda-maquininha">Maquininha vinculada</label>
-                                    <select id="venda-maquininha">
-                                        <option value="">Selecione a maquininha</option>
-                                    </select>
+                                    <label for="venda-valor-recebido">Valor recebido</label>
+                                    <input type="number" id="venda-valor-recebido" min="0" step="0.01" placeholder="0,00">
                                 </div>
-                                <p id="maquininha-status-venda" class="status-text compact-text">Cadastre e pareie uma maquininha na aba Configurações.</p>
-                            </div>
-                            <div id="pix-fields" class="payment-box" hidden>
-                                <div class="pix-card">
-                                    <p class="pix-label">Chave PIX ativa</p>
-                                    <strong id="pix-chave-exibicao">Nenhuma chave PIX configurada.</strong>
-                                    <p id="pix-beneficiario" class="status-text compact-text"></p>
-                                </div>
-                                <div id="pix-qrcode-area" class="pix-qrcode-area empty-state">
-                                    Configure a chave PIX da loja para gerar o QR Code automaticamente.
+                                <div class="change-card">
+                                    <span>Troco</span>
+                                    <strong id="venda-troco">R$ 0,00</strong>
+                                    <small id="troco-status">Informe o valor recebido para calcular o troco.</small>
                                 </div>
                             </div>
-                            <div id="money-fields" class="payment-box" hidden>
-                                <div class="money-grid">
-                                    <div class="form-group">
-                                        <label for="venda-valor-recebido">Valor recebido</label>
-                                        <input type="number" id="venda-valor-recebido" min="0" step="0.01" placeholder="0,00">
-                                    </div>
-                                    <div class="change-card">
-                                        <span>Troco</span>
-                                        <strong id="venda-troco">R$ 0,00</strong>
-                                        <small id="troco-status">Informe o valor recebido para calcular o troco.</small>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="action-row">
-                                <button class="btn btn-success" id="btn-finalizar-venda">Finalizar Venda</button>
-                                <button class="btn btn-secondary" id="btn-cancelar-venda">Cancelar</button>
-                            </div>
+                        </div>
+
+                        <div class="action-row sale-final-actions">
+                            <button class="btn btn-success" id="btn-finalizar-venda">Finalizar venda</button>
+                            <button class="btn btn-secondary" id="btn-cancelar-venda">Cancelar venda</button>
                         </div>
                     </section>
                 </div>
 
-                <h4 class="subsection-title">Historico de vendas</h4>
-                <div class="table-wrap">
-                    <table class="table">
-                        <thead>
-                            <tr>
-                                <th>Data</th>
-                                <th>Itens</th>
-                                <th>Total</th>
-                                <th>Pagamento</th>
-                                <th>Detalhes</th>
-                            </tr>
-                        </thead>
-                        <tbody id="tb-vendas">
-                            <tr><td colspan="5" class="empty">Nenhuma venda registrada</td></tr>
-                        </tbody>
-                    </table>
+                <div class="sale-shortcuts sale-shortcuts-bottom" aria-label="Atalhos de teclado">
+                    <span class="shortcut-chip">F10 Produto</span>
+                    <span class="shortcut-chip">F9 Quantidade</span>
+                    <span class="shortcut-chip">Alt+P Leitor</span>
+                    <span class="shortcut-chip">Ctrl+Backspace Remover último</span>
+                    <span class="shortcut-chip">F1 Dinheiro</span>
+                    <span class="shortcut-chip">F2 Débito</span>
+                    <span class="shortcut-chip">F3 Crédito</span>
+                    <span class="shortcut-chip">F4 PIX</span>
+                    <span class="shortcut-chip">F12 ou Ctrl+Enter Finalizar</span>
+                    <span class="shortcut-chip">Ctrl+Del Cancelar</span>
+                    <span class="shortcut-chip">Esc Limpar venda</span>
                 </div>
+
             </section>
 
             <section id="estoque" class="section">
@@ -266,7 +321,7 @@
                             <label for="mov-tipo">Tipo</label>
                             <select id="mov-tipo">
                                 <option value="entrada">Entrada</option>
-                                <option value="saida">Saida</option>
+                                <option value="saida">Saída</option>
                                 <option value="ajuste">Ajuste</option>
                             </select>
                         </div>
@@ -279,27 +334,6 @@
                             <textarea id="mov-obs" placeholder="Ex: compra de fornecedor"></textarea>
                         </div>
                         <button class="btn btn-primary" id="btn-reg-mov">Registrar</button>
-
-                        <hr class="divider">
-
-                        <h4>Atualização rápida por código</h4>
-                        <div class="form-group">
-                            <label for="codigo-rapido">Código do produto</label>
-                            <input type="text" id="codigo-rapido" placeholder="Ex: COS00001">
-                        </div>
-                        <div class="form-group">
-                            <label for="qty-rapido">Quantidade</label>
-                            <input type="number" id="qty-rapido" min="0" value="1">
-                        </div>
-                        <div class="form-group">
-                            <label for="tipo-rapido">Tipo</label>
-                            <select id="tipo-rapido">
-                                <option value="entrada">Entrada</option>
-                                <option value="saida">Saida</option>
-                                <option value="ajuste">Ajuste (define o estoque)</option>
-                            </select>
-                        </div>
-                        <button class="btn btn-primary" id="btn-rapido">Aplicar por Código</button>
                     </section>
 
                     <section class="panel">
@@ -310,7 +344,7 @@
                                     <tr>
                                         <th>Produto</th>
                                         <th>Estoque</th>
-                                        <th>Minimo</th>
+                                        <th>Mínimo</th>
                                     </tr>
                                 </thead>
                                 <tbody id="tb-baixo">
@@ -321,7 +355,7 @@
                     </section>
                 </div>
 
-                <h4 class="subsection-title">Historico de movimentações</h4>
+                <h4 class="subsection-title">Histórico de movimentações</h4>
                 <div class="table-wrap">
                     <table class="table">
                         <thead>
@@ -355,6 +389,24 @@
                 <div id="relatorio-area" class="panel relatorio-area">
                     <p>Selecione um relatório para visualizar.</p>
                 </div>
+
+                <h4 class="subsection-title">Histórico de vendas</h4>
+                <div class="table-wrap">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Data</th>
+                                <th>Itens</th>
+                                <th>Total</th>
+                                <th>Pagamento</th>
+                                <th>Detalhes</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tb-vendas">
+                            <tr><td colspan="5" class="empty">Nenhuma venda registrada</td></tr>
+                        </tbody>
+                    </table>
+                </div>
             </section>
 
             <section id="config" class="section">
@@ -379,11 +431,21 @@
                         </div>
                         <div class="form-group">
                             <label for="cfg-pix-chave">Chave PIX</label>
-                            <input type="text" id="cfg-pix-chave" placeholder="CPF, CNPJ, email, telefone ou chave aleatoria">
+                            <input type="text" id="cfg-pix-chave" placeholder="CPF, CNPJ, email, telefone ou chave aleatória">
                         </div>
                         <div class="form-group">
                             <label for="cfg-pix-cidade">Cidade do recebedor</label>
                             <input type="text" id="cfg-pix-cidade" placeholder="Ex: Cuiaba">
+                        </div>
+                        <div class="form-group">
+                            <label for="cfg-fiscal-printer-profile">Impressão da nota fiscal</label>
+                            <select id="cfg-fiscal-printer-profile">
+                                <option value="auto">Auto (usar a impressora conectada)</option>
+                                <option value="thermal80">Térmica 80mm</option>
+                                <option value="thermal58">Térmica 58mm</option>
+                                <option value="a4">A4 (jato/laser)</option>
+                            </select>
+                            <small class="field-help">No modo Auto, o cupom tenta se ajustar ao tamanho de papel da impressora escolhida na janela de impressão.</small>
                         </div>
                         <button class="btn btn-primary" id="btn-salvar-cfg">Salvar Loja</button>
                     </section>
@@ -430,8 +492,8 @@
 
                     <section class="config-card">
                         <h4>Status da Conexão</h4>
-                        <p id="cloud-status" class="status-text">O app ainda esta operando em modo local.</p>
-                        <p class="status-text">A conexão com o banco e feita automaticamente pelo backend.</p>
+                        <p id="cloud-status" class="status-text">O app ainda está operando em modo local.</p>
+                        <p class="status-text">A conexão com o banco é feita automaticamente pelo backend.</p>
                     </section>
 
                     <section class="config-card">
@@ -453,17 +515,22 @@
             <form id="form-prod">
                 <div class="form-group">
                     <label for="prod-cod-display">Código</label>
-                    <input type="text" id="prod-cod-display" readonly placeholder="Sera gerado automaticamente">
+                    <input type="text" id="prod-cod-display" readonly placeholder="Será gerado automaticamente">
                 </div>
                 <div class="form-group">
                     <label for="prod-nome">Nome</label>
                     <input type="text" id="prod-nome" required>
                 </div>
                 <div class="form-group">
+                    <label for="prod-barcode">Código de barras</label>
+                    <input type="text" id="prod-barcode" placeholder="EAN-13 ou EAN-8 (opcional)">
+                    <small class="field-help">Deixe em branco para gerar automaticamente EAN válido.</small>
+                </div>
+                <div class="form-group">
                     <label for="prod-cat">Categoria</label>
                     <select id="prod-cat" required>
                         <option value="">Selecione</option>
-                        <option value="cosmeticos">Cosmeticos</option>
+                        <option value="cosmeticos">Cosméticos</option>
                         <option value="perfumes">Perfumes</option>
                         <option value="higiene">Higiene</option>
                         <option value="alimentos">Alimentos</option>
@@ -495,7 +562,7 @@
                     <input type="number" id="prod-estoque" min="0" required>
                 </div>
                 <div class="form-group">
-                    <label for="prod-minimo">Estoque minimo</label>
+                    <label for="prod-minimo">Estoque mínimo</label>
                     <input type="number" id="prod-minimo" min="1" value="10" required>
                 </div>
                 <div class="form-buttons">
@@ -507,6 +574,28 @@
         </div>
     </div>
 
+    <div id="fiscal-note-modal" class="modal" aria-hidden="true">
+        <div class="modal-content">
+            <button class="close" type="button" aria-label="Fechar nota fiscal" id="btn-close-fiscal-note">&times;</button>
+            <h2>Pré-visualização da Nota Fiscal</h2>
+            <div id="fiscal-note-content"></div>
+            <div class="action-row" style="margin-top: 16px; gap: 12px; justify-content:flex-end;">
+                <button type="button" class="btn btn-success" id="btn-print-fiscal-note">Imprimir Nota</button>
+                <button type="button" class="btn btn-secondary" id="btn-close-fiscal-note-bottom">Fechar</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="scanner-modal" class="modal" aria-hidden="true">
+        <div class="modal-content scanner-modal-content">
+            <h2>Leitor de Código de Barras</h2>
+            <p id="scanner-status">Aguardando permissão da câmera.</p>
+            <video id="scanner-video" autoplay muted playsinline></video>
+            <div class="action-row" style="margin-top: 16px; gap: 12px;">
+                <button class="btn btn-secondary" type="button" id="btn-close-scanner">Fechar leitor</button>
+            </div>
+        </div>
+    </div>
     <div id="toast-root" class="toast-root" aria-live="polite" aria-atomic="true"></div>
 
     <script src="database.js"></script>

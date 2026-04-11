@@ -11,6 +11,7 @@
     const DEFAULT_STATE = {
         produtos: [],
         vendas: [],
+        notas: [],
         movimentos: [],
         config: {
             nomeLoja: '',
@@ -18,7 +19,15 @@
             email: '',
             pixChave: '',
             pixCidade: '',
-            maquininhas: []
+            fiscalPrinterProfile: 'auto',
+            maquininhas: [],
+            paymentProvider: '',
+            caixa: {
+                aberto: false,
+                saldoAbertura: 0,
+                abertoEm: null,
+                fechadoEm: null
+            }
         },
         meta: {
             updatedAt: null
@@ -86,12 +95,18 @@
         }
 
         async addProduto(dados) {
+            const codigo = this.generateProductCode(dados.categoria);
+            const codigoBarras = this.resolveProductBarcode(dados.codigoBarras, codigo);
+            const barcodeManualValido = this.isValidBarcode(dados.codigoBarras);
             const produto = {
                 id: this.generateId('prod'),
-                codigo: this.generateProductCode(dados.categoria),
+                codigo,
                 nome: dados.nome.trim(),
                 ncm: this.normalizeNcm(dados.ncm),
                 ncmKeywords: this.normalizeKeywords(dados.ncmKeywords),
+                codigoBarras,
+                barcodeFormat: this.detectBarcodeFormat(codigoBarras),
+                barcodeSource: barcodeManualValido ? 'externo' : 'interno',
                 categoria: dados.categoria,
                 custo: Number(dados.custo),
                 preco: Number(dados.preco),
@@ -112,11 +127,18 @@
                 throw new Error('Produto nao encontrado.');
             }
 
+            const codigoBarras = this.resolveProductBarcode((dados.codigoBarras ?? produto.codigoBarras), produto.codigo);
+            const barcodeManualValido = dados.codigoBarras === undefined
+                ? (produto.barcodeSource === 'externo')
+                : this.isValidBarcode(dados.codigoBarras);
             Object.assign(produto, {
                 ...dados,
                 nome: typeof dados.nome === 'string' ? dados.nome.trim() : produto.nome,
                 ncm: this.normalizeNcm(dados.ncm ?? produto.ncm),
                 ncmKeywords: this.normalizeKeywords(dados.ncmKeywords ?? produto.ncmKeywords),
+                codigoBarras,
+                barcodeFormat: this.detectBarcodeFormat(codigoBarras),
+                barcodeSource: barcodeManualValido ? 'externo' : 'interno',
                 atualizadoEm: new Date().toISOString()
             });
 
@@ -162,24 +184,67 @@
                 });
             });
 
-            this.state.vendas.push({
+            const venda = {
                 id: this.generateId('ven'),
                 itens,
+                subtotal: Number(dados.subtotal || dados.total || 0),
+                desconto: Number(dados.desconto || 0),
+                acrescimo: Number(dados.acrescimo || 0),
                 total: Number(dados.total),
                 pagamento: dados.pagamento,
                 valorRecebido: Number(dados.valorRecebido || 0),
                 troco: Number(dados.troco || 0),
                 maquininhaId: dados.maquininhaId || '',
                 maquininhaNome: dados.maquininhaNome || '',
+                paymentTransaction: dados.paymentTransaction ? {
+                    providerName: dados.paymentTransaction.providerName || '',
+                    providerTransactionId: dados.paymentTransaction.providerTransactionId || '',
+                    authorizationCode: dados.paymentTransaction.authorizationCode || '',
+                    status: dados.paymentTransaction.status || '',
+                    approved: Boolean(dados.paymentTransaction.approved)
+                } : null,
                 pix: dados.pix ? {
                     chave: dados.pix.chave || '',
                     payload: dados.pix.payload || '',
                     qrCodeUrl: dados.pix.qrCodeUrl || ''
                 } : null,
+                perfilFiscal: dados.perfilFiscal || 'varejo',
+                outroPagamento: (dados.outroPagamento || '').trim(),
+                cliente: {
+                    nome: (dados.cliente?.nome || '').trim(),
+                    documento: this.normalizeDocument(dados.cliente?.documento || '')
+                },
+                observacao: (dados.observacao || '').trim(),
                 data: new Date().toISOString()
-            });
+            };
+            const nota = this.createFiscalNote(venda);
+            venda.notaId = nota.id;
+
+            this.state.vendas.push(venda);
+            this.state.notas.push(nota);
 
             await this.commit();
+            return { venda, nota };
+        }
+
+        getNotas() {
+            return [...this.state.notas].sort((a, b) => new Date(b.dataEmissao) - new Date(a.dataEmissao));
+        }
+
+        getNota(id) {
+            return this.state.notas.find((nota) => nota.id === id) || null;
+        }
+
+        async updateNotaStatus(id, status) {
+            const nota = this.getNota(id);
+            if (!nota) {
+                throw new Error('Nota fiscal nao encontrada.');
+            }
+
+            nota.status = status;
+            nota.atualizadoEm = new Date().toISOString();
+            await this.commit();
+            return nota;
         }
 
         getMovimentos() {
@@ -231,9 +296,18 @@
             this.state.config = {
                 ...this.state.config,
                 ...config,
+                caixa: config.caixa
+                    ? {
+                        aberto: Boolean(config.caixa.aberto),
+                        saldoAbertura: Number(config.caixa.saldoAbertura || 0),
+                        abertoEm: config.caixa.abertoEm || null,
+                        fechadoEm: config.caixa.fechadoEm || null
+                    }
+                    : this.state.config.caixa,
                 maquininhas: Array.isArray(config.maquininhas)
                     ? config.maquininhas.map((maquininha) => ({
                         id: maquininha.id || this.generateId('maq'),
+                        provider: (maquininha.provider || '').trim(),
                         nome: (maquininha.nome || '').trim(),
                         modelo: (maquininha.modelo || '').trim(),
                         conexao: maquininha.conexao || 'bluetooth',
@@ -450,27 +524,69 @@
 
             merged.produtos = Array.isArray(merged.produtos) ? merged.produtos : [];
             merged.vendas = Array.isArray(merged.vendas) ? merged.vendas : [];
+            merged.notas = Array.isArray(merged.notas) ? merged.notas : [];
             merged.movimentos = Array.isArray(merged.movimentos) ? merged.movimentos : [];
             merged.config.maquininhas = Array.isArray(merged.config.maquininhas) ? merged.config.maquininhas : [];
+            merged.config.caixa = {
+                aberto: Boolean(merged.config.caixa?.aberto),
+                saldoAbertura: Number(merged.config.caixa?.saldoAbertura || 0),
+                abertoEm: merged.config.caixa?.abertoEm || null,
+                fechadoEm: merged.config.caixa?.fechadoEm || null
+            };
             merged.produtos = merged.produtos.map((produto) => ({
                 ...produto,
                 ncm: this.normalizeNcm(produto.ncm),
-                ncmKeywords: this.normalizeKeywords(produto.ncmKeywords)
+                ncmKeywords: this.normalizeKeywords(produto.ncmKeywords),
+                codigoBarras: this.resolveProductBarcode(produto.codigoBarras, produto.codigo),
+                barcodeFormat: this.detectBarcodeFormat(this.resolveProductBarcode(produto.codigoBarras, produto.codigo)),
+                barcodeSource: produto.barcodeSource || (produto.codigoBarras ? 'externo' : 'interno')
             }));
             merged.vendas = merged.vendas.map((venda) => ({
                 ...venda,
+                subtotal: Number(venda.subtotal || venda.total || 0),
+                desconto: Number(venda.desconto || 0),
+                acrescimo: Number(venda.acrescimo || 0),
                 valorRecebido: Number(venda.valorRecebido || 0),
                 troco: Number(venda.troco || 0),
                 maquininhaId: venda.maquininhaId || '',
                 maquininhaNome: venda.maquininhaNome || '',
+                paymentTransaction: venda.paymentTransaction ? {
+                    providerName: venda.paymentTransaction.providerName || '',
+                    providerTransactionId: venda.paymentTransaction.providerTransactionId || '',
+                    authorizationCode: venda.paymentTransaction.authorizationCode || '',
+                    status: venda.paymentTransaction.status || '',
+                    approved: Boolean(venda.paymentTransaction.approved)
+                } : null,
                 pix: venda.pix ? {
                     chave: venda.pix.chave || '',
                     payload: venda.pix.payload || '',
                     qrCodeUrl: venda.pix.qrCodeUrl || ''
-                } : null
+                } : null,
+                perfilFiscal: venda.perfilFiscal || 'varejo',
+                outroPagamento: (venda.outroPagamento || '').trim(),
+                cliente: {
+                    nome: (venda.cliente?.nome || '').trim(),
+                    documento: this.normalizeDocument(venda.cliente?.documento || '')
+                },
+                observacao: (venda.observacao || '').trim(),
+                notaId: venda.notaId || ''
+            }));
+            merged.notas = merged.notas.map((nota) => ({
+                ...nota,
+                numero: Number(nota.numero || 0),
+                serie: Number(nota.serie || 1),
+                status: nota.status || 'pendente',
+                tipo: nota.tipo || 'NFC-e',
+                cliente: {
+                    nome: (nota.cliente?.nome || '').trim(),
+                    documento: this.normalizeDocument(nota.cliente?.documento || '')
+                },
+                itens: Array.isArray(nota.itens) ? nota.itens : [],
+                observacoes: nota.observacoes || 'Documento gerado localmente para conferencia e impressao.'
             }));
             merged.config.maquininhas = merged.config.maquininhas.map((maquininha) => ({
                 id: maquininha.id || this.generateId('maq'),
+                provider: (maquininha.provider || '').trim(),
                 nome: (maquininha.nome || '').trim(),
                 modelo: (maquininha.modelo || '').trim(),
                 conexao: maquininha.conexao || 'bluetooth',
@@ -519,6 +635,145 @@
 
         normalizeKeywords(value) {
             return String(value || '').trim();
+        }
+
+        normalizeBarcode(value) {
+            return String(value || '')
+                .trim()
+                .replace(/\D/g, '');
+        }
+
+        detectBarcodeFormat(value) {
+            const barcode = this.normalizeBarcode(value);
+            if (/^\d{13}$/.test(barcode)) {
+                return 'EAN-13';
+            }
+            if (/^\d{8}$/.test(barcode)) {
+                return 'EAN-8';
+            }
+            return 'EAN-13';
+        }
+
+        resolveProductBarcode(value, fallbackSeed) {
+            const barcode = this.normalizeBarcode(value);
+            if (this.isValidBarcode(barcode)) {
+                return barcode;
+            }
+            return this.generateInternalBarcode(fallbackSeed);
+        }
+
+        isValidBarcode(value) {
+            const barcode = this.normalizeBarcode(value);
+            if (!/^\d{8}$|^\d{13}$/.test(barcode)) {
+                return false;
+            }
+            return this.calculateEanChecksum(barcode.slice(0, -1)) === Number(barcode.slice(-1));
+        }
+
+        generateInternalBarcode(seed) {
+            const body = `200${String(this.hashBarcodeSeed(seed)).padStart(9, '0').slice(0, 9)}`;
+            return `${body}${this.calculateEanChecksum(body)}`;
+        }
+
+        hashBarcodeSeed(seed) {
+            const source = String(seed || '');
+            let hash = 0;
+            for (let index = 0; index < source.length; index += 1) {
+                hash = (hash * 31 + source.charCodeAt(index)) % 1000000000;
+            }
+            return hash;
+        }
+
+        calculateEanChecksum(baseDigits) {
+            const digits = this.normalizeBarcode(baseDigits);
+            const reversed = digits.split('').reverse();
+            const total = reversed.reduce((sum, digit, index) => {
+                const multiplier = index % 2 === 0 ? 3 : 1;
+                return sum + (Number(digit) * multiplier);
+            }, 0);
+            return (10 - (total % 10)) % 10;
+        }
+
+        normalizeDocument(value) {
+            return String(value || '').replace(/\D/g, '').slice(0, 14);
+        }
+
+        getNextNotaNumber(tipo) {
+            const total = this.state.notas.filter((nota) => nota.tipo === tipo).length + 1;
+            return total;
+        }
+
+        createFiscalNote(venda) {
+            const typeMap = {
+                varejo: 'NFC-e',
+                atacado: 'NF-e',
+                servico: 'NFS-e'
+            };
+            const tipo = typeMap[venda.perfilFiscal] || 'NFC-e';
+            const autoAutorizada = this.shouldAutoAuthorizeFiscalNote(venda);
+            const status = autoAutorizada ? 'autorizada' : 'pendente';
+            return {
+                id: this.generateId('nfs'),
+                vendaId: venda.id,
+                tipo,
+                modelo: tipo === 'NF-e' ? '55' : tipo === 'NFC-e' ? '65' : 'NFS-e',
+                numero: this.getNextNotaNumber(tipo),
+                serie: 1,
+                status,
+                dataEmissao: venda.data,
+                atualizadoEm: venda.data,
+                total: Number(venda.total || 0),
+                pagamento: venda.pagamento,
+                itens: venda.itens.map((item) => ({ ...item })),
+                cliente: {
+                    nome: (venda.cliente?.nome || '').trim(),
+                    documento: this.normalizeDocument(venda.cliente?.documento || '')
+                },
+                observacoes: this.buildFiscalNoteObservacoes(tipo, autoAutorizada, venda)
+            };
+        }
+
+        shouldAutoAuthorizeFiscalNote(venda) {
+            if (venda.pagamento === 'pix') {
+                return Boolean(venda.pix?.payload || venda.pix?.chave);
+            }
+
+            if (venda.pagamento === 'debito' || venda.pagamento === 'credito') {
+                return Boolean(venda.paymentTransaction?.approved);
+            }
+
+            return false;
+        }
+
+        buildFiscalNoteObservacoes(tipo, autoAutorizada, venda) {
+            const extras = [];
+            if (venda.desconto) {
+                extras.push(`Desconto aplicado: ${venda.desconto.toFixed(2)}.`);
+            }
+            if (venda.acrescimo) {
+                extras.push(`Acrescimo aplicado: ${venda.acrescimo.toFixed(2)}.`);
+            }
+            if (venda.observacao) {
+                extras.push(`Observacao da venda: ${venda.observacao}`);
+            }
+
+            if (tipo === 'NFS-e') {
+                const base = autoAutorizada
+                    ? 'Nota de servico marcada automaticamente como autorizada apos confirmacao do pagamento.'
+                    : 'Prestacao de servico registrada localmente. Emissao oficial depende do ambiente municipal/nacional da NFS-e.';
+                return [base, ...extras].join(' ');
+            }
+
+            if (autoAutorizada) {
+                if (venda.pagamento === 'pix') {
+                    return ['Nota fiscal autorizada automaticamente apos confirmacao do pagamento via PIX.', ...extras].join(' ');
+                }
+
+                const provider = venda.paymentTransaction?.providerName || venda.maquininhaNome || 'maquininha';
+                return [`Nota fiscal autorizada automaticamente apos aprovacao do pagamento na adquirente ${provider}.`, ...extras].join(' ');
+            }
+
+            return ['Documento fiscal auxiliar gerado localmente. A autorizacao oficial depende de integracao com SEFAZ e certificado digital.', ...extras].join(' ');
         }
 
         normalizeApiBaseUrl(value) {

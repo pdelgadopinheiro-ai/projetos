@@ -18,10 +18,28 @@ services:
         sync: false
       - key: OPENAI_MODEL
         value: gpt-5-mini
+      - key: PAYMENT_GATEWAY_MODE
+        value: mock
+      - key: PAYMENT_PROVIDER_NAME
+        value: Stone
+      - key: PAYMENT_API_BASE_URL
+        sync: false
+      - key: PAYMENT_API_KEY
+        sync: false
+      - key: PAYMENT_API_SECRET
+        sync: false
+      - key: PAYMENT_LOG_PATH
+        value: data/payment-transactions.json
+      - key: PAYMENT_PROVIDER_CONFIG_PATH
+        value: data/payment-provider-config.json
+      - key: PAYMENT_PROVIDER_CONFIG_JSON
+        sync: false
       - key: NCM_LOCAL_JSON_PATH
         value: Tabela_NCM_Vigente_20260331.json
       - key: NCM_CACHE_TTL_MS
         value: 43200000
+      - key: NCM_SUPABASE_CANDIDATE_LIMIT
+        value: 120
       - key: AUTO_SYNC_NCM_ON_STARTUP
         value: true
       - key: SUPABASE_URL

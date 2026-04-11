@@ -1,0 +1,146 @@
+            modalTitle: document.getElementById('modal-title'),
+            formProd: document.getElementById('form-prod'),
+            btnValidarNcm: document.getElementById('btn-validar-ncm'),
+            tbProdutos: document.getElementById('tb-produtos'),
+        this.elements.searchProd.addEventListener('input', () => this.renderProdutosFiltrados());
+        this.elements.filterCat.addEventListener('change', () => this.renderProdutosFiltrados());
+        document.getElementById('btn-add-item').addEventListener('click', () => this.addItemVenda());
+        document.getElementById('btn-rel-prod').addEventListener('click', () => this.relProdutos());
+        this.elements.tbProdutos.addEventListener('click', (event) => {
+                this.setNcmHelp('Nenhuma sugestao oficial foi encontrada automaticamente para esse produto. Voce pode informar o NCM manualmente.');
+            this.setNcmHelp(`Sugestao oficial: ${suggestion.codigo} - ${suggestion.descricao}. A IA ainda vai conferir a coerencia antes do salvamento.`);
+                descricao: dados.ncmKeywords
+                <span class="ncm-suggestion-desc">${item.descricaoConcatenada || item.descricao}</span>
+        this.setNcmHelp(`Sugestao oficial selecionada: ${suggestion.codigo} - ${suggestion.descricao}.`);
+    getDadosProdutoDoFormulario() {
+    validarCamposBasicosProduto(dados, { exigirNcm = true } = {}) {
+            this.mostrarMsg('Preencha os campos do produto corretamente.', 'warning');
+        const dados = this.getDadosProdutoDoFormulario();
+        if (!this.validarCamposBasicosProduto(dados, { exigirNcm: true })) {
+                this.mostrarMsg('O NCM parece incoerente com o produto. Revise antes de salvar.', 'warning');
+            produtos: 'Gerenciar Produtos',
+        if (secao === 'produtos') {
+            this.renderProdutosFiltrados();
+        document.getElementById('stat-produtos').textContent = db.countProdutos();
+        document.getElementById('stat-baixo').textContent = db.produtosBaixoEstoque().length;
+        const produtos = db.produtosBaixoEstoque().slice(0, 6);
+        if (!produtos.length) {
+        this.elements.tbBaixoDashboard.innerHTML = produtos.map((produto) => `
+                <td>${produto.nome}</td>
+                <td><span class="stock-pill danger">${produto.estoque}</span></td>
+                <td>${produto.minimo}</td>
+    getProdutosFiltrados() {
+        return db.getProdutos().filter((produto) => {
+            const matchTexto = produto.nome.toLowerCase().includes(termo)
+                || produto.codigo.toLowerCase().includes(termo)
+                || String(produto.ncm || '').toLowerCase().includes(termo);
+            const matchCategoria = !categoria || produto.categoria === categoria;
+    renderProdutosFiltrados() {
+        this.renderProdutos(this.getProdutosFiltrados());
+    renderProdutos(produtos = db.getProdutos()) {
+        if (!produtos.length) {
+            this.elements.tbProdutos.innerHTML = '<tr><td colspan="8" class="empty">Nenhum produto encontrado</td></tr>';
+        this.elements.tbProdutos.innerHTML = produtos.map((produto) => `
+                <td>${produto.codigo}</td>
+                <td>${produto.nome}</td>
+                <td>${produto.ncm || '-'}</td>
+                <td>${this.capitalize(produto.categoria)}</td>
+                <td>${this.formatMoney(produto.custo)}</td>
+                <td>${this.formatMoney(produto.preco)}</td>
+                <td><span class="stock-pill ${produto.estoque <= produto.minimo ? 'danger' : 'ok'}">${produto.estoque}</span></td>
+                        <button class="btn btn-primary btn-small" data-action="edit" data-id="${produto.id}">Editar</button>
+                        <button class="btn btn-danger btn-small" data-action="delete" data-id="${produto.id}">Excluir</button>
+        this.elements.modalTitle.textContent = 'Novo Produto';
+        const produto = db.getProduto(id);
+        if (!produto) {
+            this.mostrarMsg('Produto nao encontrado.', 'warning');
+        this.elements.modalTitle.textContent = 'Editar Produto';
+        document.getElementById('prod-cod-display').value = produto.codigo;
+        document.getElementById('prod-nome').value = produto.nome;
+        document.getElementById('prod-cat').value = produto.categoria;
+        this.elements.prodNcmKeywords.value = produto.ncmKeywords || '';
+        this.elements.prodNcm.value = produto.ncm || '';
+        document.getElementById('prod-custo').value = produto.custo;
+        document.getElementById('prod-preco').value = produto.preco;
+        document.getElementById('prod-estoque').value = produto.estoque;
+        document.getElementById('prod-minimo').value = produto.minimo;
+        this.setNcmHelp(produto.ncm
+            ? `NCM atual: ${produto.ncm}. O sistema vai validar a coerencia antes de salvar.`
+            : 'Produto sem NCM salvo. A API vai tentar sugerir um codigo oficial.');
+        const dados = this.getDadosProdutoDoFormulario();
+        if (!this.validarCamposBasicosProduto(dados, { exigirNcm: true })) {
+                await db.editProduto(this.prodEditando, dados);
+                this.mostrarMsg('Produto atualizado com sucesso.');
+                await db.addProduto(dados);
+                this.mostrarMsg('Produto criado com sucesso.');
+        if (!window.confirm('Deseja realmente excluir este produto?')) {
+            await db.deleteProduto(id);
+            this.mostrarMsg('Produto excluido.');
+        const produtos = db.getProdutos();
+        produtos.forEach((produto) => {
+            option.value = produto.id;
+            option.textContent = `${produto.nome} | Est: ${produto.estoque} | ${this.formatMoney(produto.preco)}`;
+        const produtoId = this.elements.selectVenda.value;
+        const quantidade = Number(document.getElementById('venda-qty').value);
+        if (!produtoId || quantidade <= 0) {
+            this.mostrarMsg('Selecione um produto e informe uma quantidade valida.', 'warning');
+        const produto = db.getProduto(produtoId);
+        if (!produto) {
+            this.mostrarMsg('Produto nao encontrado.', 'warning');
+        const itemExistente = this.vendaAtual.find((item) => item.id === produtoId);
+        if (quantidade + quantidadeAtual > produto.estoque) {
+                id: produto.id,
+                nome: produto.nome,
+                preco: produto.preco
+        document.getElementById('venda-qty').value = '1';
+        const produtos = db.getProdutos();
+        produtos.forEach((produto) => {
+            option.value = produto.id;
+            option.textContent = `${produto.nome} | Est: ${produto.estoque}`;
+        const produtoId = this.elements.selectMov.value;
+        if (!produtoId || quantidadeInvalida) {
+            this.mostrarMsg('Preencha o produto e a quantidade corretamente.', 'warning');
+            await db.addMovimento({ produtoId, tipo, qtd, obs });
+        const produto = db.getProdutos().find((item) => item.codigo.toLowerCase() === codigo);
+        if (!produto) {
+            this.mostrarMsg('Produto nao encontrado para o codigo informado.', 'warning');
+                produtoId: produto.id,
+            this.mostrarMsg(`Estoque atualizado para ${produto.nome}.`);
+        const produtos = db.produtosBaixoEstoque();
+        if (!produtos.length) {
+        this.elements.tbBaixo.innerHTML = produtos.map((produto) => `
+                <td>${produto.nome}</td>
+                <td><span class="stock-pill danger">${produto.estoque}</span></td>
+                <td>${produto.minimo}</td>
+            const produto = db.getProduto(movimento.produtoId);
+                    <td>${produto ? produto.nome : 'Produto removido'}</td>
+    relProdutos() {
+        const produtos = db.getProdutos();
+        const totalEstoque = produtos.reduce((acc, produto) => acc + (produto.preco * produto.estoque), 0);
+            <h3>Relatorio de Produtos</h3>
+                produtos.map((produto) => [
+                    produto.codigo,
+                    produto.nome,
+                    produto.ncm || '-',
+                    this.capitalize(produto.categoria),
+                    this.formatMoney(produto.preco),
+                    produto.estoque,
+                    this.formatMoney(produto.preco * produto.estoque)
+        const produtos = db.getProdutos();
+                produtos.map((produto) => {
+                    const margem = produto.preco > 0 ? (((produto.preco - produto.custo) / produto.preco) * 100).toFixed(1) : '0.0';
+                        produto.codigo,
+                        produto.nome,
+                        produto.ncm || '-',
+                        produto.estoque,
+                        produto.minimo,
+                        this.formatMoney(produto.custo),
+                        this.formatMoney(produto.preco),
+                ['Data', 'Produto', 'Tipo', 'Quantidade', 'Observacao'],
+                    const produto = db.getProduto(movimento.produtoId);
+                        produto ? produto.nome : 'Produto removido',
+        const falta = total - valorRecebido;
+        this.elements.trocoStatus.textContent = falta > 0
+            ? `Faltam ${this.formatMoney(falta)} para completar a venda.`
+            <img src="${pix.qrCodeUrl}" alt="QR Code PIX para pagamento da venda">
+        this.renderProdutosFiltrados();

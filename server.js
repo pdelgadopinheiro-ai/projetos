@@ -2,6 +2,18 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const {
+    PaymentService,
+    MockPaymentGateway,
+    HttpPaymentGateway,
+    FileTransactionRepository,
+    PaymentGatewayError,
+    PaymentValidationError
+} = require('./payments');
+const {
+    getPaymentProviderCatalog,
+    findPaymentProvider
+} = require('./payments/provider-catalog');
 
 loadEnvFile(path.join(__dirname, '.env'));
 
@@ -12,6 +24,14 @@ const SUPABASE_SERVICE_ROLE_KEY = (process.env.SUPABASE_SERVICE_ROLE_KEY || '').
 const EASYSTORE_STORE_ID = (process.env.EASYSTORE_STORE_ID || 'loja-matriz').trim();
 const OPENAI_API_KEY = (process.env.OPENAI_API_KEY || '').trim();
 const OPENAI_MODEL = (process.env.OPENAI_MODEL || 'gpt-5-mini').trim();
+const PAYMENT_GATEWAY_MODE = (process.env.PAYMENT_GATEWAY_MODE || 'mock').trim().toLowerCase();
+const PAYMENT_PROVIDER_NAME = (process.env.PAYMENT_PROVIDER_NAME || 'stone').trim();
+const PAYMENT_API_BASE_URL = normalizeBaseUrl(process.env.PAYMENT_API_BASE_URL || '');
+const PAYMENT_API_KEY = (process.env.PAYMENT_API_KEY || '').trim();
+const PAYMENT_API_SECRET = (process.env.PAYMENT_API_SECRET || '').trim();
+const PAYMENT_LOG_PATH = path.join(__dirname, process.env.PAYMENT_LOG_PATH || 'data/payment-transactions.json');
+const PAYMENT_PROVIDER_CONFIG_PATH = path.join(__dirname, process.env.PAYMENT_PROVIDER_CONFIG_PATH || 'data/payment-provider-config.json');
+const PAYMENT_PROVIDER_CONFIG_JSON = parseJsonEnv(process.env.PAYMENT_PROVIDER_CONFIG_JSON || '{}');
 const RECEITA_NCM_URL = 'https://portalunico.siscomex.gov.br/classif/api/publico/nomenclatura/download/json?perfil=PUBLICO';
 const NCM_LOCAL_JSON_PATH = path.join(__dirname, process.env.NCM_LOCAL_JSON_PATH || 'Tabela_NCM_Vigente_20260331.json');
 const NCM_CACHE_TTL_MS = Number(process.env.NCM_CACHE_TTL_MS || 1000 * 60 * 60 * 12);
@@ -123,6 +143,7 @@ const ncmSyncState = {
     localItemCount: 0,
     localUpdatedAtLabel: ''
 };
+const PAYMENT_PROVIDER_CATALOG = getPaymentProviderCatalog();
 
 const server = http.createServer(async (req, res) => {
     setCorsHeaders(res);
@@ -155,8 +176,29 @@ const server = http.createServer(async (req, res) => {
                 storeId: EASYSTORE_STORE_ID,
                 supabaseConfigured: hasValidSupabaseConfig(),
                 openaiConfigured: Boolean(OPENAI_API_KEY),
+                payments: getPaymentRuntimeConfig(),
                 ncm: ncmStatus
             });
+        }
+
+        if (url.pathname === '/api/payments/config' && req.method === 'GET') {
+            return sendJson(res, 200, getPaymentRuntimeConfig());
+        }
+
+        if (url.pathname === '/api/payments/admin-config' && req.method === 'GET') {
+            return sendJson(res, 200, getPaymentAdminConfig());
+        }
+
+        if (url.pathname === '/api/payments/admin-config' && req.method === 'PUT') {
+            const body = await readJsonBody(req);
+            const result = savePaymentProviderConfig(body);
+            return sendJson(res, 200, result);
+        }
+
+        if (url.pathname === '/api/payments/transaction' && req.method === 'POST') {
+            const body = await readJsonBody(req);
+            const result = await processIntegratedPayment(body);
+            return sendJson(res, 200, result);
         }
 
         if (url.pathname === '/api/ncm/search' && req.method === 'GET') {
@@ -327,6 +369,216 @@ async function upsertSupabaseState(storeId, payload) {
 function startServer(initialPort) {
     const preferredPort = Number.isFinite(initialPort) ? initialPort : 3000;
     listenWithFallback(preferredPort, 5);
+}
+
+function getPaymentRuntimeConfig() {
+    const configuredProviders = Object.keys(getCombinedPaymentProviderConfigMap() || {});
+    return {
+        enabled: true,
+        mode: PAYMENT_GATEWAY_MODE,
+        providerName: PAYMENT_PROVIDER_NAME,
+        apiBaseUrlConfigured: Boolean(PAYMENT_API_BASE_URL),
+        apiKeyConfigured: Boolean(PAYMENT_API_KEY),
+        configuredProviders,
+        providers: PAYMENT_PROVIDER_CATALOG
+    };
+}
+
+function getPaymentAdminConfig() {
+    return {
+        mode: PAYMENT_GATEWAY_MODE,
+        providerName: PAYMENT_PROVIDER_NAME,
+        configs: getCombinedPaymentProviderConfigMap()
+    };
+}
+
+function createPaymentService(transaction) {
+    const providerProfile = resolveProviderProfile(transaction?.terminal?.provider || PAYMENT_PROVIDER_NAME);
+    const providerConfig = resolveProviderConfig(providerProfile.provider);
+    const gateway = PAYMENT_GATEWAY_MODE === 'api'
+        ? new HttpPaymentGateway({
+            providerName: providerProfile.provider,
+            baseUrl: providerConfig.baseUrl,
+            apiKey: providerConfig.apiKey,
+            apiSecret: providerConfig.apiSecret,
+            authType: providerConfig.authType || providerProfile.http?.authType || 'bearer',
+            transactionPath: providerConfig.transactionPath || providerProfile.http?.transactionPath || '/transactions',
+            defaultHeaders: {
+                ...(providerProfile.http?.headers || {}),
+                ...(providerConfig.headers || {})
+            },
+            supportedTerminalModels: providerProfile.models || []
+        })
+        : new MockPaymentGateway({
+            providerName: providerProfile.provider,
+            supportedTerminalModels: providerProfile.models || []
+        });
+
+    const repository = new FileTransactionRepository(PAYMENT_LOG_PATH);
+    return new PaymentService({ gateway, repository, logger: console });
+}
+
+async function processIntegratedPayment(payload) {
+    const transaction = normalizePaymentPayload(payload);
+    const paymentService = createPaymentService(transaction);
+
+    try {
+        const result = await paymentService.processTransaction(transaction);
+        return {
+            ok: true,
+            status: result.status,
+            approved: result.approved,
+            payment: result
+        };
+    } catch (error) {
+        if (error instanceof PaymentValidationError) {
+            return {
+                ok: false,
+                status: 'error',
+                approved: false,
+                error: error.message,
+                code: error.code
+            };
+        }
+
+        if (error instanceof PaymentGatewayError) {
+            return {
+                ok: false,
+                status: 'error',
+                approved: false,
+                error: error.message,
+                code: error.code,
+                details: error.details || null
+            };
+        }
+
+        throw error;
+    }
+}
+
+function normalizePaymentPayload(payload) {
+    if (!payload || typeof payload !== 'object') {
+        throw new PaymentValidationError('Corpo da transacao invalido.');
+    }
+
+    return {
+        orderId: String(payload.orderId || `VENDA-${Date.now()}`),
+        amount: Number(payload.amount || 0),
+        currency: String(payload.currency || 'BRL').toUpperCase(),
+        paymentMethod: normalizePaymentMethod(payload.paymentMethod),
+        description: String(payload.description || 'Venda ERP/PDV EasyStore'),
+        terminal: {
+            provider: String(payload.terminal?.provider || PAYMENT_PROVIDER_NAME),
+            model: String(payload.terminal?.model || 'Terminal virtual'),
+            serialNumber: String(payload.terminal?.serialNumber || payload.terminal?.id || ''),
+            connectionType: String(payload.terminal?.connectionType || 'wifi'),
+            integrationMode: String(payload.terminal?.integrationMode || '')
+        },
+        metadata: payload.metadata && typeof payload.metadata === 'object' ? payload.metadata : {}
+    };
+}
+
+function normalizePaymentMethod(method) {
+    const value = String(method || '').trim().toLowerCase();
+    if (value === 'credito') {
+        return 'credit';
+    }
+    if (value === 'debito') {
+        return 'debit';
+    }
+    return value;
+}
+
+function getSupportedModelsForProvider(providerName) {
+    const entry = resolveProviderProfile(providerName);
+    return entry ? entry.models : [];
+}
+
+function resolveProviderProfile(providerName) {
+    return findPaymentProvider(providerName) || findPaymentProvider(PAYMENT_PROVIDER_NAME) || {
+        provider: PAYMENT_PROVIDER_NAME,
+        models: [],
+        integrationMode: 'api',
+        connectionTypes: ['wifi'],
+        http: {
+            transactionPath: '/transactions',
+            authType: 'bearer',
+            headers: {}
+        }
+    };
+}
+
+function resolveProviderConfig(providerName) {
+    const mergedConfig = getCombinedPaymentProviderConfigMap();
+    const namedConfig = mergedConfig?.[providerName] || mergedConfig?.[String(providerName || '').toLowerCase()] || null;
+    return {
+        baseUrl: normalizeBaseUrl(namedConfig?.baseUrl || PAYMENT_API_BASE_URL),
+        apiKey: (namedConfig?.apiKey || PAYMENT_API_KEY || '').trim(),
+        apiSecret: (namedConfig?.apiSecret || PAYMENT_API_SECRET || '').trim(),
+        authType: (namedConfig?.authType || '').trim().toLowerCase(),
+        transactionPath: String(namedConfig?.transactionPath || '').trim(),
+        headers: namedConfig?.headers && typeof namedConfig.headers === 'object' ? namedConfig.headers : {}
+    };
+}
+
+function getCombinedPaymentProviderConfigMap() {
+    const fileConfig = readPaymentProviderConfigStore();
+    return {
+        ...(PAYMENT_PROVIDER_CONFIG_JSON || {}),
+        ...(fileConfig || {})
+    };
+}
+
+function readPaymentProviderConfigStore() {
+    try {
+        if (!fs.existsSync(PAYMENT_PROVIDER_CONFIG_PATH)) {
+            return {};
+        }
+        const raw = fs.readFileSync(PAYMENT_PROVIDER_CONFIG_PATH, 'utf8');
+        const parsed = JSON.parse(raw);
+        return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch (_) {
+        return {};
+    }
+}
+
+function savePaymentProviderConfig(body) {
+    const provider = String(body?.provider || '').trim();
+    if (!provider) {
+        return {
+            ok: false,
+            error: 'provider obrigatorio.'
+        };
+    }
+
+    const current = readPaymentProviderConfigStore();
+    const next = {
+        ...current,
+        [provider]: {
+            baseUrl: normalizeBaseUrl(body?.config?.baseUrl || ''),
+            apiKey: String(body?.config?.apiKey || '').trim(),
+            apiSecret: String(body?.config?.apiSecret || '').trim(),
+            authType: String(body?.config?.authType || 'bearer').trim().toLowerCase(),
+            transactionPath: String(body?.config?.transactionPath || '/transactions').trim() || '/transactions'
+        }
+    };
+
+    fs.mkdirSync(path.dirname(PAYMENT_PROVIDER_CONFIG_PATH), { recursive: true });
+    fs.writeFileSync(PAYMENT_PROVIDER_CONFIG_PATH, JSON.stringify(next, null, 2), 'utf8');
+
+    return {
+        ok: true,
+        provider,
+        savedAt: new Date().toISOString()
+    };
+}
+
+function parseJsonEnv(value) {
+    try {
+        return JSON.parse(value);
+    } catch (_) {
+        return {};
+    }
 }
 
 function listenWithFallback(port, retriesRemaining) {
