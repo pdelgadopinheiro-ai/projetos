@@ -102,6 +102,7 @@
             vendaClienteCpf: document.getElementById('venda-cliente-cpf'),
             atacadoCustomerFields: document.getElementById('atacado-customer-fields'),
             vendaClienteCnpj: document.getElementById('venda-cliente-cnpj'),
+            vendaClienteNomeEmpresa: document.getElementById('venda-cliente-nome-empresa'),
             moneyFields: document.getElementById('money-fields'),
             cardFields: document.getElementById('card-fields'),
             pixFields: document.getElementById('pix-fields'),
@@ -227,6 +228,14 @@
                 this.elements.vendaClienteCnpj.value = this.formatCnpjInput(this.elements.vendaClienteCnpj.value);
             });
             this.elements.vendaClienteCnpj.addEventListener('keydown', (event) => {
+                if (event.key === 'Enter') {
+                    event.preventDefault();
+                    this.finalizarVenda();
+                }
+            });
+        }
+        if (this.elements.vendaClienteNomeEmpresa) {
+            this.elements.vendaClienteNomeEmpresa.addEventListener('keydown', (event) => {
                 if (event.key === 'Enter') {
                     event.preventDefault();
                     this.finalizarVenda();
@@ -4011,6 +4020,7 @@
             const perfilFiscal = this.elements.vendaPerfilFiscal ? this.elements.vendaPerfilFiscal.value : 'varejo';
             const clienteCpf = this.normalizeCpf(this.elements.vendaClienteCpf?.value);
             const clienteCnpj = this.normalizeCnpj(this.elements.vendaClienteCnpj?.value);
+            const clienteNomeEmpresa = String(this.elements.vendaClienteNomeEmpresa?.value || '').trim();
             const valorRecebido = Number(this.elements.vendaValorRecebido.value || 0);
             const troco = Math.max(0, valorRecebido - total);
             const config = db.getConfig();
@@ -4035,6 +4045,7 @@
                 : perfilFiscal === 'varejo'
                     ? clienteCpf
                     : '';
+            const clienteNome = perfilFiscal === 'atacado' ? clienteNomeEmpresa : '';
 
             if ((pagamento === 'debito' || pagamento === 'credito') && !maquininha) {
                 this.mostrarMsg('Selecione uma maquininha para pagamentos com cartão.', 'warning');
@@ -4078,6 +4089,7 @@
                 pix,
                 perfilFiscal,
                 cliente: {
+                    nome: clienteNome,
                     documento: clienteDocumento
                 }
             });
@@ -4140,6 +4152,9 @@
         }
         if (this.elements.vendaClienteCpf) {
             this.elements.vendaClienteCpf.value = '';
+        }
+        if (this.elements.vendaClienteNomeEmpresa) {
+            this.elements.vendaClienteNomeEmpresa.value = '';
         }
         this.hideCustomerDocumentFields();
         this.elements.vendaValorRecebido.value = '';

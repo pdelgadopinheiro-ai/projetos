@@ -149,6 +149,7 @@ const ncmSyncState = {
     localItemCount: 0,
     localUpdatedAtLabel: ''
 };
+const staticAssetCache = new Map();
 const PAYMENT_PROVIDER_CATALOG = getPaymentProviderCatalog();
 const modularApp = createModularApp();
 
@@ -325,7 +326,7 @@ const server = http.createServer(async (req, res) => {
 
         const fileName = STATIC_FILES[url.pathname];
         if (fileName) {
-            return serveStaticFile(res, path.join(__dirname, fileName));
+            return serveStaticFile(req, res, path.join(__dirname, fileName));
         }
 
         sendJson(res, 404, {
@@ -1442,16 +1443,65 @@ async function validateNcmWithOpenAI(product, officialNcm, heuristic) {
     };
 }
 
-function serveStaticFile(res, filePath) {
-    fs.readFile(filePath, (error, content) => {
-        if (error) {
-            sendJson(res, 500, { error: 'Falha ao carregar arquivo.' });
+function getStaticCacheControl(fileExtension) {
+    if (fileExtension === '.html') {
+        return 'no-cache';
+    }
+    if (fileExtension === '.css' || fileExtension === '.js') {
+        return 'public, max-age=86400';
+    }
+    return 'public, max-age=3600';
+}
+
+function buildStaticEtag(stat) {
+    return `W/"${Number(stat.size || 0).toString(16)}-${Number(stat.mtimeMs || 0).toString(16)}"`;
+}
+
+function serveStaticFile(req, res, filePath) {
+    fs.stat(filePath, (statError, stat) => {
+        if (statError || !stat || !stat.isFile()) {
+            sendJson(res, 404, { error: 'Arquivo estatico nao encontrado.' });
             return;
         }
 
-        const ext = path.extname(filePath).toLowerCase();
-        res.writeHead(200, { 'Content-Type': CONTENT_TYPES[ext] || 'application/octet-stream' });
-        res.end(content);
+        const extension = path.extname(filePath).toLowerCase();
+        const etag = buildStaticEtag(stat);
+        if (req.headers['if-none-match'] === etag) {
+            res.writeHead(304);
+            res.end();
+            return;
+        }
+
+        const cacheEntry = staticAssetCache.get(filePath);
+        if (cacheEntry && cacheEntry.mtimeMs === stat.mtimeMs && cacheEntry.size === stat.size) {
+            res.writeHead(200, {
+                'Content-Type': CONTENT_TYPES[extension] || 'application/octet-stream',
+                'Cache-Control': getStaticCacheControl(extension),
+                ETag: etag
+            });
+            res.end(cacheEntry.content);
+            return;
+        }
+
+        fs.readFile(filePath, (readError, content) => {
+            if (readError) {
+                sendJson(res, 500, { error: 'Falha ao carregar arquivo.' });
+                return;
+            }
+
+            staticAssetCache.set(filePath, {
+                content,
+                mtimeMs: stat.mtimeMs,
+                size: stat.size
+            });
+
+            res.writeHead(200, {
+                'Content-Type': CONTENT_TYPES[extension] || 'application/octet-stream',
+                'Cache-Control': getStaticCacheControl(extension),
+                ETag: etag
+            });
+            res.end(content);
+        });
     });
 }
 
