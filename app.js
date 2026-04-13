@@ -1030,25 +1030,39 @@ class App {
             return;
         }
 
+        const quantidadeInformada = window.prompt('Quantidade de etiquetas para imprimir:', '1');
+        if (quantidadeInformada === null) {
+            return;
+        }
+        const quantidade = Number.parseInt(quantidadeInformada, 10);
+        if (!Number.isFinite(quantidade) || quantidade < 1 || quantidade > 500) {
+            this.mostrarMsg('Informe uma quantidade válida entre 1 e 500 etiquetas.', 'warning');
+            return;
+        }
+
         const codigoBarras = produto.codigoBarras || produto.codigo;
         const codabarValue = this.formatCodabarValue(codigoBarras);
         const codabarSvg = this.buildCodabarSvg(codabarValue, {
-            width: 170,
-            moduleWidth: 0.8,
-            barHeight: 26,
+            width: 220,
+            moduleWidth: 1,
+            barHeight: 34,
             showText: false
         });
 
+        const etiquetaHtml = `
+            <article class="product-label">
+                <p class="label-name">${produto.nome}</p>
+                <p class="label-price">${this.formatMoney(produto.preco)}</p>
+                <div class="label-barcode">
+                    ${codabarSvg}
+                </div>
+                <p class="label-code">${codabarValue}</p>
+            </article>
+        `;
+
         const labelContent = `
             <div class="label-sheet">
-                <article class="product-label">
-                    <p class="label-name">${produto.nome}</p>
-                    <p class="label-price">${this.formatMoney(produto.preco)}</p>
-                    <div class="label-barcode">
-                        ${codabarSvg}
-                    </div>
-                    <p class="label-code">${codabarValue}</p>
-                </article>
+                ${Array.from({ length: quantidade }, () => etiquetaHtml).join('')}
             </div>
         `;
 
@@ -1099,7 +1113,7 @@ class App {
             .label-sheet {
                 display: grid;
                 grid-template-columns: repeat(3, 33mm);
-                grid-auto-rows: 22mm;
+                grid-auto-rows: 24mm;
                 gap: 1mm;
                 width: 101mm;
                 align-content: start;
@@ -1107,9 +1121,9 @@ class App {
 
             .product-label {
                 width: 33mm;
-                height: 22mm;
+                height: 24mm;
                 border: 0.25mm solid #111;
-                padding: 1.1mm 1mm 0.9mm;
+                padding: 1.2mm 1mm 1mm;
                 display: flex;
                 flex-direction: column;
                 overflow: hidden;
@@ -1119,9 +1133,9 @@ class App {
 
             .label-name {
                 margin: 0;
-                min-height: 4.8mm;
-                font-size: 2.2mm;
-                line-height: 1.05;
+                min-height: 5.2mm;
+                font-size: 2.5mm;
+                line-height: 1.1;
                 font-weight: 700;
                 display: -webkit-box;
                 -webkit-line-clamp: 2;
@@ -1130,8 +1144,8 @@ class App {
             }
 
             .label-price {
-                margin: 0.5mm 0 0.6mm;
-                font-size: 4.4mm;
+                margin: 0.4mm 0 0.5mm;
+                font-size: 4.8mm;
                 line-height: 1;
                 font-weight: 800;
             }
@@ -1139,9 +1153,9 @@ class App {
             .label-barcode {
                 margin-top: auto;
                 width: 100%;
-                height: 8mm;
+                height: 10.2mm;
                 display: flex;
-                align-items: flex-end;
+                align-items: center;
                 justify-content: center;
             }
 
@@ -1149,14 +1163,15 @@ class App {
                 display: block;
                 width: 100%;
                 height: 100%;
+                shape-rendering: crispEdges;
             }
 
             .label-code {
-                margin: 0.2mm 0 0;
+                margin: 0.25mm 0 0;
                 text-align: center;
-                font-size: 1.9mm;
-                line-height: 1;
-                letter-spacing: 0.22mm;
+                font-size: 2.15mm;
+                line-height: 1.05;
+                letter-spacing: 0.18mm;
                 font-family: "Courier New", monospace;
             }
 
@@ -1176,7 +1191,8 @@ class App {
     showFiscalNotePrintout(nota, printWindow = null) {
         const printerRoute = this.getFiscalPrinterRouteForNote(nota);
         const effectivePrinterProfile = printerRoute.profile;
-        const routingBanner = this.buildFiscalPrintRoutingBanner(printerRoute);
+        const isNfe = String(nota?.tipo || '').toUpperCase() === 'NF-E';
+        const routingBanner = isNfe ? '' : this.buildFiscalPrintRoutingBanner(printerRoute);
         const bodyContent = `${routingBanner}${this.buildThermalFiscalNoteMarkup(nota, effectivePrinterProfile)}`;
         const printStyles = this.getThermalFiscalNotePrintStyles(effectivePrinterProfile);
 
@@ -1677,9 +1693,9 @@ class App {
         const chaveAcessoFormatada = this.formatAccessKey(context.chaveAcesso);
         const chaveAcessoBarcode = chaveAcessoDigits
             ? this.buildNfeAccessKeyBarcodeSvg(chaveAcessoDigits, {
-                width: 860,
-                moduleWidth: 1.08,
-                barHeight: 58,
+                width: 560,
+                moduleWidth: 1.02,
+                barHeight: 72,
                 showText: true
             })
             : '';
@@ -1728,8 +1744,6 @@ class App {
 
         return `
             <main class="fiscal-doc fiscal-doc-nfe">
-                <div class="nfe-watermark">Documento Fiscal</div>
-
                 <header class="nfe-main-header">
                     <section class="nfe-logo-block">
                         <div class="nfe-logo-mark">${this.escapeHtml(logoMonograma)}</div>
@@ -1740,7 +1754,6 @@ class App {
                     </section>
                     <section class="nfe-title-block">
                         <h1>NOTA FISCAL ELETRONICA</h1>
-                        <p>Modelo ${this.escapeHtml(String(nota.modelo || '55'))} | Status ${this.escapeHtml(context.statusLabel)}</p>
                     </section>
                 </header>
 
@@ -1748,20 +1761,7 @@ class App {
                     <p><strong>Chave de Acesso:</strong> ${this.escapeHtml(chaveAcessoFormatada || '-')}</p>
                     <p><strong>Protocolo SEFAZ:</strong> ${this.escapeHtml(protocoloAutorizacao)}</p>
                     <p><strong>Consulta:</strong> ${consultaUrl ? this.escapeHtml(consultaUrl) : '-'}</p>
-                </section>
-
-                <section class="danfe-box nfe-access-barcode-box">
-                    <h4>Código de barras da chave de acesso (DANFE)</h4>
-                    <div class="nfe-access-barcode">
-                        ${chaveAcessoBarcode || '<p>Código de barras indisponível sem chave de acesso.</p>'}
-                    </div>
-                    <p class="nfe-access-barcode-note">
-                        O código de barras no DANFE representa a Chave de Acesso de 44 dígitos. Ele permite leitura óptica rápida para consultar a autenticidade da nota no portal da Fazenda, facilita o recebimento de mercadorias, automação de estoque e rastreabilidade dos produtos.
-                    </p>
-                    <p class="nfe-access-barcode-note">
-                        <strong>Identificação da Nota (DANFE):</strong> o código de barras unidimensional contem a chave de acesso, permitindo leitura por scanner e consulta no site da Receita Federal.
-                    </p>
-                </section>
+                </section>
 
                 <section class="danfe-grid nfe-data-grid">
                     <section class="danfe-box">
@@ -1847,11 +1847,21 @@ class App {
                         <p><strong>Assinatura/Autenticacao:</strong> Protocolo ${this.escapeHtml(protocoloAutorizacao)} | Chave ${this.escapeHtml(chaveAcessoFormatada || '-')}</p>
                         <p class="fiscal-warning">Preencha NCM, CFOP, CST/CSOSN, base e alíquotas conforme legislação e regime tributario.</p>
                     </section>
-                    <section class="danfe-box nfe-qr-box">
-                        <p class="danfe-label">QR Code NF-e</p>
-                        ${qrCodeUrl
+                    <section class="danfe-box nfe-qr-barcode-box">
+                        <div class="nfe-qr-barcode-grid">
+                            <div class="nfe-qr-box">
+                                <p class="danfe-label">QR Code NF-e</p>
+                                ${qrCodeUrl
                 ? `<img src="${this.escapeHtml(qrCodeUrl)}" alt="QR Code de consulta da NF-e">`
-                : '<p>QR Code indisponível sem chave de acesso.</p>'}
+                : '<p>QR Code indisponivel sem chave de acesso.</p>'}
+                            </div>
+                            <div class="nfe-access-inline-box">
+                                <p class="danfe-label">Chave de acesso</p>
+                                <div class="nfe-access-barcode nfe-access-barcode-inline">
+                                    ${chaveAcessoBarcode || '<p>Codigo de barras indisponivel sem chave de acesso.</p>'}
+                                </div>
+                            </div>
+                        </div>
                     </section>
                 </section>
 
@@ -2138,6 +2148,15 @@ class App {
                 display: block;
             }
 
+            .nfe-access-barcode-inline {
+                margin-top: 0;
+                min-height: 170px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                padding: 6px;
+            }
+
             .nfe-access-barcode-note {
                 margin-top: 4px;
                 font-size: 9px;
@@ -2228,7 +2247,21 @@ class App {
                 align-items: stretch;
             }
 
-            .nfe-qr-box {
+            .nfe-qr-barcode-box {
+                display: flex;
+                align-items: stretch;
+            }
+
+            .nfe-qr-barcode-grid {
+                width: 100%;
+                display: grid;
+                grid-template-columns: minmax(180px, 0.9fr) minmax(0, 1.1fr);
+                gap: 8px;
+                align-items: stretch;
+            }
+
+            .nfe-qr-box,
+            .nfe-access-inline-box {
                 display: flex;
                 flex-direction: column;
                 align-items: center;
@@ -2243,6 +2276,10 @@ class App {
                 border: 1px solid #000;
                 padding: 4px;
                 background: #fff;
+            }
+
+            .nfe-access-inline-box {
+                align-items: stretch;
             }
 
             .nfe-payment-barcode-box {
@@ -2280,6 +2317,10 @@ class App {
 
                 .danfe-grid,
                 .nfe-footer-grid {
+                    grid-template-columns: 1fr;
+                }
+
+                .nfe-qr-barcode-grid {
                     grid-template-columns: 1fr;
                 }
             }
