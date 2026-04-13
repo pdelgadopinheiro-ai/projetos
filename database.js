@@ -16,10 +16,20 @@
         config: {
             nomeLoja: '',
             cnpj: '',
+            inscricaoEstadual: '',
+            enderecoRua: '',
+            enderecoNumero: '',
+            enderecoBairro: '',
+            enderecoUf: '',
+            enderecoCep: '',
             email: '',
             pixChave: '',
             pixCidade: '',
             fiscalPrinterProfile: 'auto',
+            fiscalPrinterProfileNfe: 'a4',
+            fiscalPrinterProfileNfce: 'thermal80',
+            fiscalPrinterNameNfe: '',
+            fiscalPrinterNameNfce: '',
             maquininhas: [],
             paymentProvider: '',
             caixa: {
@@ -235,13 +245,40 @@
             return this.state.notas.find((nota) => nota.id === id) || null;
         }
 
-        async updateNotaStatus(id, status) {
+        async updateNotaStatus(id, status, metadata = null) {
             const nota = this.getNota(id);
             if (!nota) {
                 throw new Error('Nota fiscal nao encontrada.');
             }
 
             nota.status = status;
+            if (metadata && typeof metadata === 'object') {
+                const allowedFields = [
+                    'chaveAcesso',
+                    'protocoloAutorizacao',
+                    'dataRecebimentoSefaz',
+                    'reciboSefaz',
+                    'motivoSefaz',
+                    'codigoStatusSefaz',
+                    'urlConsultaSefaz',
+                    'naturezaOperacao',
+                    'finalidade',
+                    'formaPagamento',
+                    'dataVencimento',
+                    'instrucoesPagamento',
+                    'frete',
+                    'seguro',
+                    'desconto',
+                    'cobrancaPropria',
+                    'linhaDigitavel',
+                    'clienteEndereco'
+                ];
+                allowedFields.forEach((field) => {
+                    if (metadata[field] !== undefined) {
+                        nota[field] = metadata[field];
+                    }
+                });
+            }
             nota.atualizadoEm = new Date().toISOString();
             await this.commit();
             return nota;
@@ -293,9 +330,34 @@
         }
 
         async setConfig(config) {
+            const nfeProfile = 'a4';
+            const legacyProfile = String(config.fiscalPrinterProfile ?? this.state.config.fiscalPrinterProfile ?? '').trim().toLowerCase();
+            const nfceProfileRaw = String(
+                config.fiscalPrinterProfileNfce
+                ?? config.fiscalPrinterProfile
+                ?? this.state.config.fiscalPrinterProfileNfce
+                ?? legacyProfile
+                ?? 'thermal80'
+            ).trim().toLowerCase();
+            const nfceProfile = ['thermal80', 'thermal58'].includes(nfceProfileRaw) ? nfceProfileRaw : 'thermal80';
+
             this.state.config = {
                 ...this.state.config,
                 ...config,
+                nomeLoja: (config.nomeLoja ?? this.state.config.nomeLoja ?? '').trim(),
+                cnpj: (config.cnpj ?? this.state.config.cnpj ?? '').trim(),
+                inscricaoEstadual: (config.inscricaoEstadual ?? this.state.config.inscricaoEstadual ?? '').trim(),
+                enderecoRua: (config.enderecoRua ?? this.state.config.enderecoRua ?? '').trim(),
+                enderecoNumero: (config.enderecoNumero ?? this.state.config.enderecoNumero ?? '').trim(),
+                enderecoBairro: (config.enderecoBairro ?? this.state.config.enderecoBairro ?? '').trim(),
+                enderecoUf: (config.enderecoUf ?? this.state.config.enderecoUf ?? '').trim().toUpperCase().slice(0, 2),
+                enderecoCep: (config.enderecoCep ?? this.state.config.enderecoCep ?? '').trim(),
+                email: (config.email ?? this.state.config.email ?? '').trim(),
+                fiscalPrinterProfile: legacyProfile || this.state.config.fiscalPrinterProfile || 'auto',
+                fiscalPrinterProfileNfe: nfeProfile,
+                fiscalPrinterProfileNfce: nfceProfile,
+                fiscalPrinterNameNfe: String(config.fiscalPrinterNameNfe ?? this.state.config.fiscalPrinterNameNfe ?? '').trim(),
+                fiscalPrinterNameNfce: String(config.fiscalPrinterNameNfce ?? this.state.config.fiscalPrinterNameNfce ?? '').trim(),
                 caixa: config.caixa
                     ? {
                         aberto: Boolean(config.caixa.aberto),
@@ -310,8 +372,13 @@
                         provider: (maquininha.provider || '').trim(),
                         nome: (maquininha.nome || '').trim(),
                         modelo: (maquininha.modelo || '').trim(),
-                        conexao: maquininha.conexao || 'bluetooth',
+                        conexao: maquininha.conexao || 'manual',
+                        identificador: (maquininha.identificador || '').trim(),
+                        endpoint: (maquininha.endpoint || '').trim(),
                         status: maquininha.status || 'disponivel',
+                        connectedAt: maquininha.connectedAt || null,
+                        connectedDetails: (maquininha.connectedDetails || '').trim(),
+                        lastError: (maquininha.lastError || '').trim(),
                         pareadoEm: maquininha.pareadoEm || null
                     }))
                     : this.state.config.maquininhas
@@ -533,6 +600,25 @@
                 abertoEm: merged.config.caixa?.abertoEm || null,
                 fechadoEm: merged.config.caixa?.fechadoEm || null
             };
+            merged.config.nomeLoja = String(merged.config.nomeLoja || '').trim();
+            merged.config.cnpj = String(merged.config.cnpj || '').trim();
+            merged.config.inscricaoEstadual = String(merged.config.inscricaoEstadual || '').trim();
+            merged.config.enderecoRua = String(merged.config.enderecoRua || '').trim();
+            merged.config.enderecoNumero = String(merged.config.enderecoNumero || '').trim();
+            merged.config.enderecoBairro = String(merged.config.enderecoBairro || '').trim();
+            merged.config.enderecoUf = String(merged.config.enderecoUf || '').trim().toUpperCase().slice(0, 2);
+            merged.config.enderecoCep = String(merged.config.enderecoCep || '').trim();
+            merged.config.email = String(merged.config.email || '').trim();
+            merged.config.fiscalPrinterProfile = String(merged.config.fiscalPrinterProfile || '').trim().toLowerCase();
+            const nfceProfileRaw = String(
+                merged.config.fiscalPrinterProfileNfce
+                || merged.config.fiscalPrinterProfile
+                || 'thermal80'
+            ).trim().toLowerCase();
+            merged.config.fiscalPrinterProfileNfe = 'a4';
+            merged.config.fiscalPrinterProfileNfce = ['thermal80', 'thermal58'].includes(nfceProfileRaw) ? nfceProfileRaw : 'thermal80';
+            merged.config.fiscalPrinterNameNfe = String(merged.config.fiscalPrinterNameNfe || '').trim();
+            merged.config.fiscalPrinterNameNfce = String(merged.config.fiscalPrinterNameNfce || '').trim();
             merged.produtos = merged.produtos.map((produto) => ({
                 ...produto,
                 ncm: this.normalizeNcm(produto.ncm),
@@ -581,6 +667,24 @@
                     nome: (nota.cliente?.nome || '').trim(),
                     documento: this.normalizeDocument(nota.cliente?.documento || '')
                 },
+                clienteEndereco: String(nota.clienteEndereco || '').trim(),
+                naturezaOperacao: String(nota.naturezaOperacao || 'Venda de mercadoria').trim(),
+                finalidade: String(nota.finalidade || 'Normal').trim(),
+                formaPagamento: String(nota.formaPagamento || nota.pagamento || '').trim(),
+                dataVencimento: nota.dataVencimento || nota.dataEmissao || null,
+                instrucoesPagamento: String(nota.instrucoesPagamento || '').trim(),
+                frete: Number(nota.frete || 0),
+                seguro: Number(nota.seguro || 0),
+                desconto: Number(nota.desconto || 0),
+                chaveAcesso: String(nota.chaveAcesso || '').trim(),
+                protocoloAutorizacao: String(nota.protocoloAutorizacao || '').trim(),
+                dataRecebimentoSefaz: nota.dataRecebimentoSefaz || null,
+                reciboSefaz: String(nota.reciboSefaz || '').trim(),
+                motivoSefaz: String(nota.motivoSefaz || '').trim(),
+                codigoStatusSefaz: String(nota.codigoStatusSefaz || '').trim(),
+                urlConsultaSefaz: String(nota.urlConsultaSefaz || '').trim(),
+                cobrancaPropria: Boolean(nota.cobrancaPropria),
+                linhaDigitavel: String(nota.linhaDigitavel || '').trim(),
                 itens: Array.isArray(nota.itens) ? nota.itens : [],
                 observacoes: nota.observacoes || 'Documento gerado localmente para conferencia e impressao.'
             }));
@@ -589,8 +693,13 @@
                 provider: (maquininha.provider || '').trim(),
                 nome: (maquininha.nome || '').trim(),
                 modelo: (maquininha.modelo || '').trim(),
-                conexao: maquininha.conexao || 'bluetooth',
+                conexao: maquininha.conexao || 'manual',
+                identificador: (maquininha.identificador || '').trim(),
+                endpoint: (maquininha.endpoint || '').trim(),
                 status: maquininha.status || 'disponivel',
+                connectedAt: maquininha.connectedAt || null,
+                connectedDetails: (maquininha.connectedDetails || '').trim(),
+                lastError: (maquininha.lastError || '').trim(),
                 pareadoEm: maquininha.pareadoEm || null
             }));
 
@@ -729,6 +838,24 @@
                     nome: (venda.cliente?.nome || '').trim(),
                     documento: this.normalizeDocument(venda.cliente?.documento || '')
                 },
+                clienteEndereco: String(venda?.cliente?.endereco || '').trim(),
+                naturezaOperacao: String(venda?.naturezaOperacao || 'Venda de mercadoria').trim(),
+                finalidade: String(venda?.finalidade || 'Normal').trim(),
+                formaPagamento: String(venda?.formaPagamento || venda?.pagamento || '').trim(),
+                dataVencimento: venda?.dataVencimento || venda?.data || null,
+                instrucoesPagamento: String(venda?.instrucoesPagamento || '').trim(),
+                frete: Number(venda?.frete || 0),
+                seguro: Number(venda?.seguro || 0),
+                desconto: Number(venda?.desconto || 0),
+                chaveAcesso: '',
+                protocoloAutorizacao: '',
+                dataRecebimentoSefaz: null,
+                reciboSefaz: '',
+                motivoSefaz: '',
+                codigoStatusSefaz: '',
+                urlConsultaSefaz: '',
+                cobrancaPropria: Boolean(venda?.cobrancaPropria),
+                linhaDigitavel: String(venda?.linhaDigitavel || '').trim(),
                 observacoes: this.buildFiscalNoteObservacoes(tipo, autoAutorizada, venda)
             };
         }
@@ -780,7 +907,9 @@
             if (!value || !value.trim()) {
                 return '';
             }
-            return value.trim().replace(/\/+$/, '');
+            let normalized = value.trim().replace(/\/+$/, '');
+            normalized = normalized.replace(/\/api(?:\/v1)?$/i, '');
+            return normalized;
         }
 
         looksLikeInvalidApiBaseUrl(value) {

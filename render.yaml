@@ -46,3 +46,29 @@ services:
         sync: false
       - key: SUPABASE_SERVICE_ROLE_KEY
         sync: false
+      - key: NFE_AMBIENTE
+        value: homolog
+      - key: NFE_UF
+        value: MS
+      - key: NFE_CERT_PATH
+        value: certificados/certificado-a1.pfx
+      - key: NFE_CERT_BASE64
+        sync: false
+      - key: NFE_CERT_PASSWORD
+        sync: false
+      - key: NFE_CNPJ_EMITENTE
+        sync: false
+      - key: NFE_IE_EMITENTE
+        sync: false
+      - key: NFE_RAZAO_SOCIAL
+        sync: false
+      - key: NFE_LOGRADOURO
+        sync: false
+      - key: NFE_NUMERO
+        value: S/N
+      - key: NFE_BAIRRO
+        sync: false
+      - key: NFE_MUNICIPIO
+        sync: false
+      - key: NFE_CEP
+        sync: false

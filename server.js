@@ -14,6 +14,7 @@ const {
     getPaymentProviderCatalog,
     findPaymentProvider
 } = require('./payments/provider-catalog');
+const { createModularApp } = require('./src/modular/create-app');
 
 loadEnvFile(path.join(__dirname, '.env'));
 
@@ -144,6 +145,7 @@ const ncmSyncState = {
     localUpdatedAtLabel: ''
 };
 const PAYMENT_PROVIDER_CATALOG = getPaymentProviderCatalog();
+const modularApp = createModularApp();
 
 const server = http.createServer(async (req, res) => {
     setCorsHeaders(res);
@@ -156,6 +158,10 @@ const server = http.createServer(async (req, res) => {
 
     try {
         const url = new URL(req.url, `http://${req.headers.host}`);
+
+        if (url.pathname === '/vendas' || url.pathname.startsWith('/vendas/') || url.pathname.startsWith('/api/v1/')) {
+            return modularApp(req, res);
+        }
 
         if (url.pathname === '/api/health') {
             const ncmStatus = getNcmCacheStatus();
@@ -317,7 +323,18 @@ const server = http.createServer(async (req, res) => {
             return serveStaticFile(res, path.join(__dirname, fileName));
         }
 
-        sendJson(res, 404, { error: 'Rota nao encontrada.' });
+        sendJson(res, 404, {
+            error: 'Rota nao encontrada.',
+            path: url.pathname,
+            method: req.method,
+            suggestions: [
+                '/api/health',
+                '/api/v1/health',
+                '/api/v1/fiscal/nfe/emitir (POST)',
+                '/vendas',
+                '/'
+            ]
+        });
     } catch (error) {
         console.error(error);
         sendJson(res, 500, { error: error.message || 'Erro interno.' });

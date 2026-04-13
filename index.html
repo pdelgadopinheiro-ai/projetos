@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
@@ -145,12 +145,12 @@
                         <h3>Frente de caixa</h3>
                         <p class="section-note">Fluxo rápido para leitura de código, conferência do carrinho e fechamento da venda.</p>
                     </div>
+                    <a class="btn btn-secondary" href="/vendas">Abrir módulo de vendas separado</a>
                 </div>
 
                 <div class="sales-grid">
                     <section class="panel pos-panel">
                         <div class="panel-title-row">
-                            <h4>Leitura e inclusão de itens</h4>
                             <span class="operator-pill">Modo PDV</span>
                         </div>
 
@@ -171,15 +171,10 @@
                             <label for="venda-scan-input">Código de barras</label>
                             <div class="input-with-actions">
                                 <input type="text" id="venda-scan-input" placeholder="Informe ou escaneie o código" autocomplete="off">
-                                <button type="button" class="btn btn-secondary" id="btn-open-scanner">Abrir leitor</button>
                             </div>
                         </div>
 
-                        <div class="action-row sale-entry-actions">
-                            <button class="btn btn-primary" id="btn-add-item">Adicionar item</button>
-                            <button class="btn btn-secondary" id="btn-scan-add">Adicionar por código</button>
-                        </div>
-                        <p id="venda-add-status" class="status-text compact-text sale-entry-status">Caixa pronto para leitura. Se preferir, use o leitor para incluir produtos rapidamente.</p>
+                        <p id="venda-add-status" class="status-text compact-text sale-entry-status"></p>
 
                         <div class="table-wrap compact-wrap pos-cart-wrap">
                             <table class="table-compact">
@@ -200,23 +195,10 @@
                     </section>
 
                     <section class="panel pos-summary-panel">
-                        <h4>Resumo e pagamento</h4>
-
                         <div class="sale-total-card">
                             <span>Total da compra</span>
                             <strong id="venda-total">R$ 0,00</strong>
                             <small id="sale-status-text">Nenhum item no carrinho.</small>
-                        </div>
-
-                        <div class="sale-kpi-grid">
-                            <article class="sale-kpi">
-                                <span>Itens</span>
-                                <strong id="sale-item-count">0</strong>
-                            </article>
-                            <article class="sale-kpi">
-                                <span>Unidades</span>
-                                <strong id="sale-unit-count">0</strong>
-                            </article>
                         </div>
 
                         <div class="form-group">
@@ -229,13 +211,6 @@
                             </select>
                         </div>
 
-                        <div class="quick-pay-grid">
-                            <button type="button" class="quick-pay-btn" data-sale-pay="dinheiro">Dinheiro (F1)</button>
-                            <button type="button" class="quick-pay-btn" data-sale-pay="debito">Débito (F2)</button>
-                            <button type="button" class="quick-pay-btn" data-sale-pay="credito">Crédito (F3)</button>
-                            <button type="button" class="quick-pay-btn" data-sale-pay="pix">PIX (F4)</button>
-                        </div>
-
                         <div class="form-group">
                             <label for="venda-perfil-fiscal">Perfil fiscal</label>
                             <select id="venda-perfil-fiscal">
@@ -243,6 +218,20 @@
                                 <option value="atacado">Atacado (NF-e)</option>
                                 <option value="servico">Serviço (NFS-e)</option>
                             </select>
+                        </div>
+
+                        <div id="varejo-customer-fields" class="payment-box" hidden>
+                            <div class="form-group">
+                                <label for="venda-cliente-cpf">CPF do cliente</label>
+                                <input type="text" id="venda-cliente-cpf" placeholder="000.000.000-00" autocomplete="off">
+                            </div>
+                        </div>
+
+                        <div id="atacado-customer-fields" class="payment-box" hidden>
+                            <div class="form-group">
+                                <label for="venda-cliente-cnpj">CNPJ do cliente</label>
+                                <input type="text" id="venda-cliente-cnpj" placeholder="00.000.000/0000-00" autocomplete="off">
+                            </div>
                         </div>
 
                         <div id="card-fields" class="payment-box" hidden>
@@ -280,24 +269,27 @@
                             </div>
                         </div>
 
-                        <div class="action-row sale-final-actions">
-                            <button class="btn btn-success" id="btn-finalizar-venda">Finalizar venda</button>
-                            <button class="btn btn-secondary" id="btn-cancelar-venda">Cancelar venda</button>
-                        </div>
                     </section>
                 </div>
 
                 <div class="sale-shortcuts sale-shortcuts-bottom" aria-label="Atalhos de teclado">
                     <span class="shortcut-chip">F10 Produto</span>
                     <span class="shortcut-chip">F9 Quantidade</span>
+                    <span class="shortcut-chip">F6 Varejo</span>
+                    <span class="shortcut-chip">F7 Atacado</span>
+                    <span class="shortcut-chip">Ctrl+C CPF (varejo)</span>
+                    <span class="shortcut-chip">Ctrl+M CNPJ (atacado)</span>
                     <span class="shortcut-chip">Alt+P Leitor</span>
                     <span class="shortcut-chip">Ctrl+Backspace Remover último</span>
                     <span class="shortcut-chip">F1 Dinheiro</span>
                     <span class="shortcut-chip">F2 Débito</span>
+                    <span class="shortcut-chip">F5 Abrir leitor</span>
                     <span class="shortcut-chip">F3 Crédito</span>
                     <span class="shortcut-chip">F4 PIX</span>
-                    <span class="shortcut-chip">F12 ou Ctrl+Enter Finalizar</span>
+                    <span class="shortcut-chip">F12 Finalizar venda</span>
                     <span class="shortcut-chip">Ctrl+Del Cancelar</span>
+                    <span class="shortcut-chip">Ctrl+Enter Adicionar produto</span>
+                    <span class="shortcut-chip">Enter Confirma preço atacado</span>
                     <span class="shortcut-chip">Esc Limpar venda</span>
                 </div>
 
@@ -390,23 +382,6 @@
                     <p>Selecione um relatório para visualizar.</p>
                 </div>
 
-                <h4 class="subsection-title">Histórico de vendas</h4>
-                <div class="table-wrap">
-                    <table class="table">
-                        <thead>
-                            <tr>
-                                <th>Data</th>
-                                <th>Itens</th>
-                                <th>Total</th>
-                                <th>Pagamento</th>
-                                <th>Detalhes</th>
-                            </tr>
-                        </thead>
-                        <tbody id="tb-vendas">
-                            <tr><td colspan="5" class="empty">Nenhuma venda registrada</td></tr>
-                        </tbody>
-                    </table>
-                </div>
             </section>
 
             <section id="config" class="section">
@@ -426,6 +401,30 @@
                             <input type="text" id="cfg-cnpj" placeholder="00.000.000/0000-00">
                         </div>
                         <div class="form-group">
+                            <label for="cfg-ie">Inscrição Estadual</label>
+                            <input type="text" id="cfg-ie" placeholder="Ex: 123.456.789.000">
+                        </div>
+                        <div class="form-group">
+                            <label for="cfg-endereco-rua">Endereço - Rua</label>
+                            <input type="text" id="cfg-endereco-rua" placeholder="Ex: Rua das Flores">
+                        </div>
+                        <div class="form-group">
+                            <label for="cfg-endereco-numero">Endereço - Número</label>
+                            <input type="text" id="cfg-endereco-numero" placeholder="Ex: 123">
+                        </div>
+                        <div class="form-group">
+                            <label for="cfg-endereco-bairro">Endereço - Bairro</label>
+                            <input type="text" id="cfg-endereco-bairro" placeholder="Ex: Centro">
+                        </div>
+                        <div class="form-group">
+                            <label for="cfg-endereco-uf">Endereço - UF</label>
+                            <input type="text" id="cfg-endereco-uf" maxlength="2" placeholder="Ex: MT">
+                        </div>
+                        <div class="form-group">
+                            <label for="cfg-endereco-cep">Endereço - CEP</label>
+                            <input type="text" id="cfg-endereco-cep" placeholder="Ex: 78000-000">
+                        </div>
+                        <div class="form-group">
                             <label for="cfg-email">Email</label>
                             <input type="email" id="cfg-email" placeholder="contato@loja.com">
                         </div>
@@ -435,56 +434,88 @@
                         </div>
                         <div class="form-group">
                             <label for="cfg-pix-cidade">Cidade do recebedor</label>
-                            <input type="text" id="cfg-pix-cidade" placeholder="Ex: Cuiaba">
+                            <input type="text" id="cfg-pix-cidade" placeholder="Ex: Cuiabá">
                         </div>
                         <div class="form-group">
-                            <label for="cfg-fiscal-printer-profile">Impressão da nota fiscal</label>
-                            <select id="cfg-fiscal-printer-profile">
-                                <option value="auto">Auto (usar a impressora conectada)</option>
-                                <option value="thermal80">Térmica 80mm</option>
-                                <option value="thermal58">Térmica 58mm</option>
+                            <label for="cfg-fiscal-printer-profile-nfe">Impressora da NF-e (atacado)</label>
+                            <select id="cfg-fiscal-printer-profile-nfe">
                                 <option value="a4">A4 (jato/laser)</option>
                             </select>
-                            <small class="field-help">No modo Auto, o cupom tenta se ajustar ao tamanho de papel da impressora escolhida na janela de impressão.</small>
                         </div>
+                        <div class="form-group">
+                            <label for="cfg-fiscal-printer-name-nfe">Nome da impressora NF-e (opcional)</label>
+                            <input type="text" id="cfg-fiscal-printer-name-nfe" placeholder="Ex: HP LaserJet Escritório">
+                        </div>
+                        <div class="form-group">
+                            <label for="cfg-fiscal-printer-profile-nfce">Impressora da NFC-e (varejo)</label>
+                            <select id="cfg-fiscal-printer-profile-nfce">
+                                <option value="thermal80">Térmica 80mm</option>
+                                <option value="thermal58">Térmica 58mm</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="cfg-fiscal-printer-name-nfce">Nome da impressora térmica (opcional)</label>
+                            <input type="text" id="cfg-fiscal-printer-name-nfce" placeholder="Ex: Bematech MP-4200 TH">
+                        </div>
+                        <small class="field-help">O navegador abre a janela de impressão. Selecione a impressora indicada para cada tipo de documento fiscal.</small>
                         <button class="btn btn-primary" id="btn-salvar-cfg">Salvar Loja</button>
                     </section>
 
                     <section class="config-card">
                         <h4>Maquininhas</h4>
                         <div class="form-group">
+                            <label for="cfg-maq-provider">Fornecedor / bandeira</label>
+                            <input type="text" id="cfg-maq-provider" placeholder="Ex: Stone, PagSeguro, Cielo, Mercado Pago, Outro">
+                        </div>
+                        <div class="form-group">
                             <label for="cfg-maq-nome">Nome exibido</label>
                             <input type="text" id="cfg-maq-nome" placeholder="Ex: Caixa principal">
                         </div>
                         <div class="form-group">
                             <label for="cfg-maq-modelo">Modelo</label>
-                            <input type="text" id="cfg-maq-modelo" placeholder="Ex: Moderninha Smart 2">
+                            <input type="text" id="cfg-maq-modelo" placeholder="Ex: Moderninha Smart 2 (opcional)">
                         </div>
                         <div class="form-group">
-                            <label for="cfg-maq-conexao">Conexão</label>
+                            <label for="cfg-maq-conexao">Tipo de conexão</label>
                             <select id="cfg-maq-conexao">
+                                <option value="manual">Manual (qualquer maquininha)</option>
                                 <option value="bluetooth">Bluetooth</option>
                                 <option value="wifi">Wi-Fi</option>
                                 <option value="usb">USB</option>
+                                <option value="serial">Serial</option>
+                                <option value="api">API/TEF</option>
+                                <option value="outro">Outro</option>
                             </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="cfg-maq-identificador">Identificador da maquininha (opcional)</label>
+                            <input type="text" id="cfg-maq-identificador" placeholder="Ex: serial, MAC, id interno">
+                        </div>
+                        <div class="form-group">
+                            <label for="cfg-maq-endpoint">Endpoint de integração (opcional)</label>
+                            <input type="text" id="cfg-maq-endpoint" placeholder="Ex: http://127.0.0.1:8080/pagamentos">
                         </div>
                         <div class="action-row">
                             <button class="btn btn-primary" id="btn-add-maq">Cadastrar Maquininha</button>
+                            <button class="btn btn-secondary" id="btn-connect-maq">Conectar Selecionada</button>
                             <button class="btn btn-secondary" id="btn-parear-maq">Parear Selecionada</button>
                         </div>
+                        <p class="status-text compact-text">Suporte genérico: cadastre qualquer marca/modelo e conecte por Manual, Bluetooth, USB, Wi-Fi, Serial ou API/TEF.</p>
                         <div class="table-wrap compact-wrap">
                             <table class="table-compact">
                                 <thead>
                                     <tr>
+                                        <th>Fornecedor</th>
                                         <th>Nome</th>
                                         <th>Modelo</th>
                                         <th>Conexão</th>
                                         <th>Status</th>
+                                        <th>Conectada em</th>
                                         <th></th>
                                     </tr>
                                 </thead>
                                 <tbody id="tb-maquininhas">
-                                    <tr><td colspan="5" class="empty">Nenhuma maquininha cadastrada</td></tr>
+                                    <tr><td colspan="7" class="empty">Nenhuma maquininha cadastrada</td></tr>
                                 </tbody>
                             </table>
                         </div>
@@ -523,7 +554,10 @@
                 </div>
                 <div class="form-group">
                     <label for="prod-barcode">Código de barras</label>
-                    <input type="text" id="prod-barcode" placeholder="EAN-13 ou EAN-8 (opcional)">
+                    <div class="input-with-actions">
+                        <input type="text" id="prod-barcode" placeholder="EAN-13 ou EAN-8 (opcional)">
+                        <button type="button" class="btn btn-secondary" id="btn-scan-prod-barcode">Ler código</button>
+                    </div>
                     <small class="field-help">Deixe em branco para gerar automaticamente EAN válido.</small>
                 </div>
                 <div class="form-group">
@@ -594,6 +628,40 @@
             <div class="action-row" style="margin-top: 16px; gap: 12px;">
                 <button class="btn btn-secondary" type="button" id="btn-close-scanner">Fechar leitor</button>
             </div>
+        </div>
+    </div>
+
+    <div id="sale-product-modal" class="modal" aria-hidden="true">
+        <div class="modal-content sale-product-modal-content">
+            <button class="close" type="button" aria-label="Fechar busca de produto" id="btn-close-sale-product-modal">&times;</button>
+            <h2>Selecionar produto (F10)</h2>
+            <div class="sale-product-picker-controls">
+                <div class="form-group">
+                    <label for="sale-product-search">Pesquisar por nome ou codigo</label>
+                    <input type="text" id="sale-product-search" placeholder="Digite para filtrar produtos" autocomplete="off">
+                </div>
+                <div class="form-group sale-product-qty-field">
+                    <label for="sale-product-qty">Quantidade</label>
+                    <input type="number" id="sale-product-qty" min="1" value="1">
+                </div>
+            </div>
+            <div class="table-wrap compact-wrap">
+                <table class="table-compact">
+                    <thead>
+                        <tr>
+                            <th>Código</th>
+                            <th>Produto</th>
+                            <th>Estoque</th>
+                            <th>Preço</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody id="tb-sale-product-picker">
+                        <tr><td colspan="5" class="empty">Nenhum produto cadastrado</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <p id="sale-product-picker-status" class="status-text compact-text">Use setas para navegar, TAB para avançar nos botões e ENTER para selecionar.</p>
         </div>
     </div>
     <div id="toast-root" class="toast-root" aria-live="polite" aria-atomic="true"></div>

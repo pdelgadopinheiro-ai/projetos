@@ -10,6 +10,13 @@ class App {
         this.scannerInterval = null;
         this.currentScannedBarcode = null;
         this.lastBarcodeDetectedAt = 0;
+        this.scannerMode = 'sale';
+        this.scannerCloseAfterSuccess = false;
+        this.salesStaticFitTimer = null;
+        this.salesOnlyEscExitArmedAt = 0;
+        this.salesOnlyEscExitWindowMs = 1800;
+        this.saleProductPickerResults = [];
+        this.saleProductPickerIndex = -1;
         this.scanInputTimer = null;
         this.lastFiscalNoteHtml = '';
         this.lastFiscalNotePrintStyles = '';
@@ -41,12 +48,15 @@ class App {
             date: document.getElementById('current-date'),
             syncBadge: document.getElementById('sync-badge'),
             toastRoot: document.getElementById('toast-root'),
+            mainContent: document.querySelector('.main-content'),
+            header: document.querySelector('.header'),
             modal: document.getElementById('modal-prod'),
             modalTitle: document.getElementById('modal-title'),
             formProd: document.getElementById('form-prod'),
             btnValidarNcm: document.getElementById('btn-validar-ncm'),
             prodNome: document.getElementById('prod-nome'),
             prodBarcode: document.getElementById('prod-barcode'),
+            btnScanProdBarcode: document.getElementById('btn-scan-prod-barcode'),
             prodCat: document.getElementById('prod-cat'),
             prodNcmKeywords: document.getElementById('prod-ncm-keywords'),
             prodNcm: document.getElementById('prod-ncm'),
@@ -57,7 +67,6 @@ class App {
             filterCat: document.getElementById('filter-cat'),
             tbProdutos: document.getElementById('tb-produtos'),
             tbItens: document.getElementById('tb-itens'),
-            tbVendas: document.getElementById('tb-vendas'),
             tbMov: document.getElementById('tb-mov'),
             tbBaixo: document.getElementById('tb-baixo'),
             tbVendasDashboard: document.getElementById('tb-vendas-dashboard'),
@@ -72,6 +81,12 @@ class App {
             scannerModal: document.getElementById('scanner-modal'),
             scannerVideo: document.getElementById('scanner-video'),
             scannerStatus: document.getElementById('scanner-status'),
+            saleProductModal: document.getElementById('sale-product-modal'),
+            saleProductSearch: document.getElementById('sale-product-search'),
+            saleProductQty: document.getElementById('sale-product-qty'),
+            tbSaleProductPicker: document.getElementById('tb-sale-product-picker'),
+            saleProductPickerStatus: document.getElementById('sale-product-picker-status'),
+            btnCloseSaleProductModal: document.getElementById('btn-close-sale-product-modal'),
             selectMov: document.getElementById('select-mov-prod'),
             cloudStatus: document.getElementById('cloud-status'),
             vendaPerfilFiscal: document.getElementById('venda-perfil-fiscal'),
@@ -80,8 +95,13 @@ class App {
             saleUnitCount: document.getElementById('sale-unit-count'),
             saleStatusText: document.getElementById('sale-status-text'),
             saleAddStatus: document.getElementById('venda-add-status'),
+            posSummaryPanel: document.querySelector('.pos-summary-panel'),
             saleQuickPayButtons: document.querySelectorAll('[data-sale-pay]'),
             vendaMaquininha: document.getElementById('venda-maquininha'),
+            varejoCustomerFields: document.getElementById('varejo-customer-fields'),
+            vendaClienteCpf: document.getElementById('venda-cliente-cpf'),
+            atacadoCustomerFields: document.getElementById('atacado-customer-fields'),
+            vendaClienteCnpj: document.getElementById('venda-cliente-cnpj'),
             moneyFields: document.getElementById('money-fields'),
             cardFields: document.getElementById('card-fields'),
             pixFields: document.getElementById('pix-fields'),
@@ -92,18 +112,34 @@ class App {
             pixBeneficiario: document.getElementById('pix-beneficiario'),
             pixQrcodeArea: document.getElementById('pix-qrcode-area'),
             maquininhaStatusVenda: document.getElementById('maquininha-status-venda'),
+            cfgNome: document.getElementById('cfg-nome'),
+            cfgCnpj: document.getElementById('cfg-cnpj'),
+            cfgInscricaoEstadual: document.getElementById('cfg-ie'),
+            cfgEnderecoRua: document.getElementById('cfg-endereco-rua'),
+            cfgEnderecoNumero: document.getElementById('cfg-endereco-numero'),
+            cfgEnderecoBairro: document.getElementById('cfg-endereco-bairro'),
+            cfgEnderecoUf: document.getElementById('cfg-endereco-uf'),
+            cfgEnderecoCep: document.getElementById('cfg-endereco-cep'),
+            cfgEmail: document.getElementById('cfg-email'),
             cfgPixChave: document.getElementById('cfg-pix-chave'),
             cfgPixCidade: document.getElementById('cfg-pix-cidade'),
-            cfgFiscalPrinterProfile: document.getElementById('cfg-fiscal-printer-profile'),
+            cfgFiscalPrinterProfileNfe: document.getElementById('cfg-fiscal-printer-profile-nfe'),
+            cfgFiscalPrinterNameNfe: document.getElementById('cfg-fiscal-printer-name-nfe'),
+            cfgFiscalPrinterProfileNfce: document.getElementById('cfg-fiscal-printer-profile-nfce'),
+            cfgFiscalPrinterNameNfce: document.getElementById('cfg-fiscal-printer-name-nfce'),
+            cfgMaqProvider: document.getElementById('cfg-maq-provider'),
             cfgMaqNome: document.getElementById('cfg-maq-nome'),
             cfgMaqModelo: document.getElementById('cfg-maq-modelo'),
             cfgMaqConexao: document.getElementById('cfg-maq-conexao'),
+            cfgMaqIdentificador: document.getElementById('cfg-maq-identificador'),
+            cfgMaqEndpoint: document.getElementById('cfg-maq-endpoint'),
             tbMaquininhas: document.getElementById('tb-maquininhas'),
             fiscalNoteModal: document.getElementById('fiscal-note-modal'),
             fiscalNoteContent: document.getElementById('fiscal-note-content'),
             btnPrintFiscalNote: document.getElementById('btn-print-fiscal-note'),
             btnCloseFiscalNote: document.getElementById('btn-close-fiscal-note'),
-            btnCloseFiscalNoteBottom: document.getElementById('btn-close-fiscal-note-bottom')
+            btnCloseFiscalNoteBottom: document.getElementById('btn-close-fiscal-note-bottom'),
+            vendasSection: document.getElementById('vendas')
         };
     }
 
@@ -111,21 +147,28 @@ class App {
         await db.init();
         this.carregarConfig();
         this.atualizarData();
+        this.forceSalesOnlySection();
         this.renderCurrentSection();
         this.renderDashboard();
         this.renderSelectVenda();
         this.renderSelectMov();
-        this.renderVendas();
         this.renderMovimentos();
         this.renderBaixoEstoque();
         this.renderCloudStatus();
+        this.scheduleSalesStaticFit();
         window.setInterval(() => this.atualizarData(), 60000);
     }
 
     bindEvents() {
         document.querySelectorAll('.menu-btn').forEach((button) => {
             button.addEventListener('click', (event) => {
-                this.mostrarSecao(event.currentTarget.dataset.section);
+                const secao = event.currentTarget.dataset.section;
+                if (secao === 'vendas' && !this.isSalesOnlyMode()) {
+                    event.preventDefault();
+                    window.location.href = '/vendas';
+                    return;
+                }
+                this.mostrarSecao(secao);
             });
         });
 
@@ -146,16 +189,151 @@ class App {
         this.elements.prodNcm.addEventListener('input', () => this.handleNcmManualInput());
         this.elements.searchProd.addEventListener('input', () => this.renderProdutosFiltrados());
         this.elements.filterCat.addEventListener('change', () => this.renderProdutosFiltrados());
+        if (this.elements.btnScanProdBarcode) {
+            this.elements.btnScanProdBarcode.addEventListener('click', () => this.openProductBarcodeScanner());
+        }
 
-        document.getElementById('btn-add-item').addEventListener('click', () => this.addItemVenda());
-        document.getElementById('btn-finalizar-venda').addEventListener('click', () => this.finalizarVenda());
-        document.getElementById('btn-cancelar-venda').addEventListener('click', () => this.cancelarVenda());
+        const btnAddItem = document.getElementById('btn-add-item');
+        if (btnAddItem) {
+            btnAddItem.addEventListener('click', () => this.addItemVenda());
+        }
+        const btnFinalizarVenda = document.getElementById('btn-finalizar-venda');
+        if (btnFinalizarVenda) {
+            btnFinalizarVenda.addEventListener('click', () => this.finalizarVenda());
+        }
+        const btnCancelarVenda = document.getElementById('btn-cancelar-venda');
+        if (btnCancelarVenda) {
+            btnCancelarVenda.addEventListener('click', () => this.cancelarVenda());
+        }
         this.elements.vendaPagamento.addEventListener('change', () => this.updatePaymentUI());
+        if (this.elements.vendaPerfilFiscal) {
+            this.elements.vendaPerfilFiscal.addEventListener('change', () => this.handleSaleFiscalProfileChange({
+                focusWholesalePrice: this.isWholesaleFiscalProfile()
+            }));
+        }
+        if (this.elements.vendaClienteCpf) {
+            this.elements.vendaClienteCpf.addEventListener('input', () => {
+                this.elements.vendaClienteCpf.value = this.formatCpfInput(this.elements.vendaClienteCpf.value);
+            });
+            this.elements.vendaClienteCpf.addEventListener('keydown', (event) => {
+                if (event.key === 'Enter') {
+                    event.preventDefault();
+                    this.finalizarVenda();
+                }
+            });
+        }
+        if (this.elements.vendaClienteCnpj) {
+            this.elements.vendaClienteCnpj.addEventListener('input', () => {
+                this.elements.vendaClienteCnpj.value = this.formatCnpjInput(this.elements.vendaClienteCnpj.value);
+            });
+            this.elements.vendaClienteCnpj.addEventListener('keydown', (event) => {
+                if (event.key === 'Enter') {
+                    event.preventDefault();
+                    this.finalizarVenda();
+                }
+            });
+        }
         this.elements.selectVenda.addEventListener('change', () => this.updateSaleEntryStatus());
         this.elements.vendaValorRecebido.addEventListener('input', () => this.updateChangePreview());
-        this.elements.btnScanAdd.addEventListener('click', () => this.addItemByScan());
-        this.elements.btnOpenScanner.addEventListener('click', () => this.openScannerModal());
+        if (this.elements.btnScanAdd) {
+            this.elements.btnScanAdd.addEventListener('click', () => this.addItemByScan());
+        }
+        if (this.elements.btnOpenScanner) {
+            this.elements.btnOpenScanner.addEventListener('click', () => this.openScannerModal());
+        }
         this.elements.btnCloseScanner.addEventListener('click', () => this.closeScannerModal());
+        if (this.elements.btnCloseSaleProductModal) {
+            this.elements.btnCloseSaleProductModal.addEventListener('click', () => this.closeSaleProductPicker());
+        }
+        if (this.elements.saleProductModal) {
+            this.elements.saleProductModal.addEventListener('click', (event) => {
+                if (event.target === this.elements.saleProductModal) {
+                    this.closeSaleProductPicker();
+                }
+            });
+        }
+        if (this.elements.saleProductSearch) {
+            this.elements.saleProductSearch.addEventListener('input', () => this.renderSaleProductPicker());
+            this.elements.saleProductSearch.addEventListener('keydown', (event) => {
+                if (event.key === 'ArrowDown') {
+                    event.preventDefault();
+                    this.moveSaleProductPickerSelection(1);
+                    return;
+                }
+                if (event.key === 'ArrowUp') {
+                    event.preventDefault();
+                    this.moveSaleProductPickerSelection(-1);
+                    return;
+                }
+                if (event.key === 'Enter') {
+                    event.preventDefault();
+                    if (this.elements.saleProductQty) {
+                        this.elements.saleProductQty.focus();
+                        this.elements.saleProductQty.select();
+                        return;
+                    }
+                    this.pickSaleProductFromCurrentSelection();
+                }
+                if (event.key === 'Escape') {
+                    event.preventDefault();
+                    this.closeSaleProductPicker();
+                }
+            });
+        }
+        if (this.elements.saleProductQty) {
+            this.elements.saleProductQty.addEventListener('keydown', (event) => {
+                if (event.key === 'Enter') {
+                    event.preventDefault();
+                    this.pickSaleProductFromCurrentSelection();
+                    return;
+                }
+                if (event.key === 'Escape') {
+                    event.preventDefault();
+                    this.closeSaleProductPicker();
+                }
+            });
+        }
+        if (this.elements.tbSaleProductPicker) {
+            this.elements.tbSaleProductPicker.addEventListener('click', (event) => {
+                const pickButton = event.target.closest('[data-pick-product]');
+                if (pickButton) {
+                    this.pickSaleProductFromPicker(pickButton.dataset.pickProduct);
+                    return;
+                }
+
+                const row = event.target.closest('tr[data-picker-index]');
+                if (!row) {
+                    return;
+                }
+
+                this.saleProductPickerIndex = Number(row.dataset.pickerIndex);
+                this.renderSaleProductPicker();
+                if (this.elements.saleProductQty) {
+                    this.elements.saleProductQty.focus();
+                    this.elements.saleProductQty.select();
+                }
+            });
+            this.elements.tbSaleProductPicker.addEventListener('keydown', (event) => {
+                if (event.key === 'ArrowDown') {
+                    event.preventDefault();
+                    this.moveSaleProductPickerSelection(1);
+                    return;
+                }
+                if (event.key === 'ArrowUp') {
+                    event.preventDefault();
+                    this.moveSaleProductPickerSelection(-1);
+                    return;
+                }
+                if (event.key === 'Enter') {
+                    const activeButton = event.target.closest('[data-pick-product]');
+                    if (!activeButton) {
+                        return;
+                    }
+                    event.preventDefault();
+                    this.pickSaleProductFromPicker(activeButton.dataset.pickProduct);
+                }
+            });
+        }
         this.elements.saleQuickPayButtons.forEach((button) => {
             button.addEventListener('click', () => {
                 this.setSalePaymentMethod(button.dataset.salePay, { showFeedback: false });
@@ -168,7 +346,8 @@ class App {
             }
         });
         this.elements.vendaScanInput.addEventListener('input', () => this.handleScanInputAutoAdd());
-        document.addEventListener('keydown', (event) => this.handleGlobalShortcuts(event));
+        document.addEventListener('keydown', (event) => this.handleGlobalShortcuts(event), true);
+        window.addEventListener('resize', () => this.scheduleSalesStaticFit());
 
         document.getElementById('btn-reg-mov').addEventListener('click', () => this.registrarMov());
         const btnRapido = document.getElementById('btn-rapido');
@@ -183,6 +362,7 @@ class App {
 
         document.getElementById('btn-salvar-cfg').addEventListener('click', () => this.salvarConfig());
         document.getElementById('btn-add-maq').addEventListener('click', () => this.cadastrarMaquininha());
+        document.getElementById('btn-connect-maq').addEventListener('click', () => this.conectarMaquininhaSelecionada());
         document.getElementById('btn-parear-maq').addEventListener('click', () => this.parearMaquininhaSelecionada());
         document.getElementById('btn-export').addEventListener('click', () => this.exportarBackup());
         document.getElementById('btn-limpar').addEventListener('click', () => this.limparDados());
@@ -229,6 +409,24 @@ class App {
             }
             this.removerItemVenda(Number(actionButton.dataset.removeItem));
         });
+        this.elements.tbItens.addEventListener('change', (event) => {
+            const priceInput = event.target.closest('[data-item-price-index]');
+            if (!priceInput) {
+                return;
+            }
+            this.updateSaleItemPrice(Number(priceInput.dataset.itemPriceIndex), priceInput.value);
+        });
+        this.elements.tbItens.addEventListener('keydown', (event) => {
+            if (event.key !== 'Enter') {
+                return;
+            }
+            const priceInput = event.target.closest('[data-item-price-index]');
+            if (!priceInput) {
+                return;
+            }
+            event.preventDefault();
+            this.confirmSaleItemPriceByEnter(Number(priceInput.dataset.itemPriceIndex), priceInput.value);
+        });
 
         this.elements.prodNcmSuggestions.addEventListener('click', (event) => {
             const button = event.target.closest('[data-ncm-suggestion]');
@@ -251,6 +449,9 @@ class App {
             }
 
             const { maqAction, id } = actionButton.dataset;
+            if (maqAction === 'conectar') {
+                this.conectarMaquininha(id);
+            }
             if (maqAction === 'parear') {
                 this.parearMaquininha(id);
             }
@@ -345,7 +546,7 @@ class App {
         }
 
         try {
-            const response = await fetch(`/api/ncm/search?${params.toString()}`);
+            const response = await fetch(`/api/ncm/searchá${params.toString()}`);
             if (!response.ok) {
                 const errorText = await response.text();
                 throw new Error(errorText || `Falha na busca de NCM (HTTP ${response.status}).`);
@@ -596,7 +797,7 @@ class App {
 
     validarCamposBasicosProduto(dados, { exigirNcm = true } = {}) {
         if (exigirNcm && !dados.ncm) {
-            this.mostrarMsg('Informe um NCM valido com 8 digitos para validar.', 'warning');
+            this.mostrarMsg('Informe um NCM valido com 8 dígitos para validar.', 'warning');
             return false;
         }
 
@@ -673,6 +874,7 @@ class App {
         };
         this.elements.title.textContent = titulos[secao] || 'EasyStore';
         this.renderCurrentSection(secao);
+        this.scheduleSalesStaticFit();
     }
 
     renderCurrentSection(secao = document.querySelector('.section.active')?.id || 'dashboard') {
@@ -687,7 +889,6 @@ class App {
             this.renderMaquininhas();
             this.updatePaymentUI();
             this.renderItensVenda();
-            this.renderVendas();
             window.setTimeout(() => {
                 if (this.elements.vendaScanInput) {
                     this.elements.vendaScanInput.focus();
@@ -703,6 +904,31 @@ class App {
             this.carregarConfig();
             this.renderMaquininhas();
             this.renderCloudStatus();
+        }
+        this.scheduleSalesStaticFit();
+    }
+
+    forceSalesOnlySection() {
+        if (!this.isSalesOnlyMode()) {
+            return;
+        }
+
+        const vendasSection = document.getElementById('vendas');
+        if (!vendasSection) {
+            return;
+        }
+
+        document.querySelectorAll('.section').forEach((section) => section.classList.remove('active'));
+        vendasSection.classList.add('active');
+
+        document.querySelectorAll('.menu-btn').forEach((button) => button.classList.remove('active'));
+        const vendasButton = document.querySelector('.menu-btn[data-section="vendas"]');
+        if (vendasButton) {
+            vendasButton.classList.add('active');
+        }
+
+        if (this.elements.title) {
+            this.elements.title.textContent = '';
         }
     }
 
@@ -948,9 +1174,11 @@ class App {
     }
 
     showFiscalNotePrintout(nota, printWindow = null) {
-        const printerProfile = this.getFiscalPrinterProfile();
-        const bodyContent = this.buildThermalFiscalNoteMarkup(nota, printerProfile);
-        const printStyles = this.getThermalFiscalNotePrintStyles(printerProfile);
+        const printerRoute = this.getFiscalPrinterRouteForNote(nota);
+        const effectivePrinterProfile = printerRoute.profile;
+        const routingBanner = this.buildFiscalPrintRoutingBanner(printerRoute);
+        const bodyContent = `${routingBanner}${this.buildThermalFiscalNoteMarkup(nota, effectivePrinterProfile)}`;
+        const printStyles = this.getThermalFiscalNotePrintStyles(effectivePrinterProfile);
 
         const windowToUse = printWindow || window.open('', `NotaFiscal${nota.id}`);
         if (!windowToUse) {
@@ -963,7 +1191,7 @@ class App {
             <html>
                 <head>
                     <meta charset="UTF-8">
-                    <title>${nota.tipo} Nº ${nota.numero}</title>
+                    <title>${nota.tipo} No ${nota.numero}</title>
                     <style>${printStyles}</style>
                 </head>
                 <body>
@@ -981,9 +1209,70 @@ class App {
         return allowedProfiles.includes(normalized) ? normalized : 'auto';
     }
 
-    getFiscalPrinterProfile() {
-        const config = db.getConfig();
-        return this.normalizeFiscalPrinterProfile(config.fiscalPrinterProfile || this.elements.cfgFiscalPrinterProfile?.value);
+    normalizeNfcePrinterProfile(value) {
+        const normalized = this.normalizeFiscalPrinterProfile(value);
+        return ['thermal80', 'thermal58'].includes(normalized) ? normalized : 'thermal80';
+    }
+
+    normalizeNfePrinterProfile() {
+        return 'a4';
+    }
+
+    getFiscalPrinterRouteForNote(nota) {
+        const config = db.getConfig ? db.getConfig() : {};
+        const tipoNota = String(nota?.tipo || '').toUpperCase();
+        const nfeProfile = this.normalizeNfePrinterProfile(config.fiscalPrinterProfileNfe || this.elements.cfgFiscalPrinterProfileNfe?.value);
+        const nfceProfile = this.normalizeNfcePrinterProfile(
+            config.fiscalPrinterProfileNfce || config.fiscalPrinterProfile || this.elements.cfgFiscalPrinterProfileNfce?.value
+        );
+        const nfePrinterName = String(config.fiscalPrinterNameNfe || this.elements.cfgFiscalPrinterNameNfe?.value || '').trim();
+        const nfcePrinterName = String(config.fiscalPrinterNameNfce || this.elements.cfgFiscalPrinterNameNfce?.value || '').trim();
+
+        if (tipoNota === 'NF-E') {
+            const target = nfePrinterName || 'Impressora comum A4';
+            return {
+                profile: nfeProfile,
+                title: 'Destino NF-e (atacado)',
+                targetLabel: target,
+                message: 'NF-e deve ser impressa apenas em impressora comum (papel A4).'
+            };
+        }
+
+        if (tipoNota === 'NFC-E') {
+            const papelTermico = nfceProfile === 'thermal58' ? 'térmica 58mm' : 'térmica 80mm';
+            const target = nfcePrinterName || `Impressora ${papelTermico}`;
+            return {
+                profile: nfceProfile,
+                title: 'Destino NFC-e (varejo)',
+                targetLabel: target,
+                message: 'NFC-e deve ser impressa apenas em impressora térmica.'
+            };
+        }
+
+        return {
+            profile: this.normalizeFiscalPrinterProfile(config.fiscalPrinterProfile || 'auto'),
+            title: 'Destino de impressão',
+            targetLabel: '',
+            message: 'Confirme a impressora correta antes de imprimir.'
+        };
+    }
+
+    buildFiscalPrintRoutingBanner(route) {
+        if (!route) {
+            return '';
+        }
+        const title = this.escapeHtml(route.title || 'Destino de impressão');
+        const target = route.targetLabel
+            ? `<p><strong>Impressora recomendada:</strong> ${this.escapeHtml(route.targetLabel)}</p>`
+            : '';
+        const message = this.escapeHtml(route.message || '');
+        return `
+            <section class="fiscal-print-routing">
+                <p><strong>${title}</strong></p>
+                ${target}
+                ${message ? `<p>${message}</p>` : ''}
+            </section>
+        `;
     }
 
     getFiscalPrinterLayout(profile = 'auto') {
@@ -1050,58 +1339,533 @@ class App {
         return layouts[normalized] || layouts.auto;
     }
 
+    getFiscalLinkedSale(nota) {
+        if (!nota?.vendaId || typeof db.getVendas !== 'function') {
+            return null;
+        }
+        return db.getVendas().find((venda) => venda.id === nota.vendaId) || null;
+    }
+
+    getFiscalStatusLabel(status) {
+        const normalized = String(status || '').toLowerCase();
+        const labels = {
+            autorizada: 'Autorizada',
+            pendente: 'Pendente',
+            rejeitada: 'Rejeitada',
+            cancelada: 'Cancelada'
+        };
+        return labels[normalized] || this.capitalize(normalized);
+    }
+
+    formatDocument(value) {
+        const digits = String(value || '').replace(/\D/g, '');
+        if (digits.length === 11) {
+            return digits.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
+        }
+        if (digits.length === 14) {
+            return digits.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5');
+        }
+        return String(value || '').trim() || 'Não informado';
+    }
+
+    hashToDigits(value, length = 8) {
+        const source = String(value || '');
+        let hash = 0;
+        for (let index = 0; index < source.length; index += 1) {
+            hash = (hash * 31 + source.charCodeAt(index)) % 1000000000;
+        }
+        return String(hash).padStart(length, '0').slice(-length);
+    }
+
+    computeNfeMod11(baseValue) {
+        const digits = String(baseValue || '').replace(/\D/g, '').padStart(43, '0').slice(-43);
+        let multiplier = 2;
+        let total = 0;
+
+        for (let index = digits.length - 1; index >= 0; index -= 1) {
+            total += Number(digits[index]) * multiplier;
+            multiplier = multiplier === 9 ? 2 : multiplier + 1;
+        }
+
+        const remainder = total % 11;
+        const digit = remainder <= 1 ? 0 : 11 - remainder;
+        return String(digit);
+    }
+
+    buildLocalFiscalAccessKey(nota, documento) {
+        const tipoNota = String(nota?.tipo || '').toUpperCase();
+        const modeloPadrao = tipoNota === 'NF-E' ? '55' : '65';
+        const modelo = String(nota?.modelo || modeloPadrao).replace(/\D/g, '').padStart(2, '0').slice(-2);
+        const docDigits = String(documento || '').replace(/\D/g, '').padStart(14, '0').slice(-14);
+        const issueDate = new Date(nota?.dataEmissao || Date.now());
+        const year = String(issueDate.getFullYear()).slice(-2);
+        const month = String(issueDate.getMonth() + 1).padStart(2, '0');
+        const serie = String(nota?.serie || 1).replace(/\D/g, '').padStart(3, '0').slice(-3);
+        const numero = String(nota?.numero || 0).replace(/\D/g, '').padStart(9, '0').slice(-9);
+        const cnfSeed = `${nota?.id || ''}${nota?.vendaId || ''}${docDigits}${numero}`;
+        const cnf = this.hashToDigits(cnfSeed, 8);
+        const base43 = `50${year}${month}${docDigits}${modelo}${serie}${numero}1${cnf}`;
+        const dv = this.computeNfeMod11(base43);
+        return `${base43}${dv}`;
+    }
+
+    formatAccessKey(value) {
+        const digits = String(value || '').replace(/\D/g, '');
+        return digits.replace(/(\d{4})(?=\d)/g, '$1 ').trim();
+    }
+
+    formatIsoDate(value) {
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) {
+            return '-';
+        }
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    }
+
+    formatIsoTime(value) {
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) {
+            return '-';
+        }
+        const hour = String(date.getHours()).padStart(2, '0');
+        const minute = String(date.getMinutes()).padStart(2, '0');
+        const second = String(date.getSeconds()).padStart(2, '0');
+        return `${hour}:${minute}:${second}`;
+    }
+
+    getStoreAddressLine(config = {}) {
+        const rua = String(config.enderecoRua || '').trim();
+        const numero = String(config.enderecoNumero || '').trim();
+        const bairro = String(config.enderecoBairro || '').trim();
+        const cidade = String(config.pixCidade || '').trim();
+        const uf = String(config.enderecoUf || '').trim().toUpperCase();
+        const cep = String(config.enderecoCep || '').trim();
+
+        const parts = [];
+        if (rua) {
+            parts.push(rua);
+        }
+        if (numero) {
+            parts.push(`N ${numero}`);
+        }
+        if (bairro) {
+            parts.push(bairro);
+        }
+        if (cidade) {
+            parts.push(cidade);
+        }
+        if (uf) {
+            parts.push(uf);
+        }
+        if (cep) {
+            parts.push(`CEP ${cep}`);
+        }
+
+        return parts.length ? parts.join(', ') : 'Não informado';
+    }
+
+    getClientAddressLine(nota, venda) {
+        const notaAddress = String(nota?.clienteEndereco || '').trim();
+        if (notaAddress) {
+            return notaAddress;
+        }
+        const saleAddress = String(venda?.cliente?.endereco || '').trim();
+        if (saleAddress) {
+            return saleAddress;
+        }
+        return 'Não informado';
+    }
+
+    buildNfeConsultaUrl(chaveAcesso) {
+        const key = String(chaveAcesso || '').replace(/\D/g, '');
+        if (!key) {
+            return '';
+        }
+        return `https://www.nfe.fazenda.gov.br/portal/consultaRecaptcha.aspx?chNFe=${encodeURIComponent(key)}`;
+    }
+
+    buildNfeQrCodeUrl(consultaUrl) {
+        const url = String(consultaUrl || '').trim();
+        if (!url) {
+            return '';
+        }
+        return `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(url)}`;
+    }
+
+    isValidPaymentLine(value) {
+        const digits = String(value || '').replace(/\D/g, '');
+        if (!/^\d{47}$|^\d{48}$/.test(digits)) {
+            return false;
+        }
+        return !/^(\d)\1+$/.test(digits);
+    }
+
+    formatPaymentLine(value) {
+        const digits = String(value || '').replace(/\D/g, '');
+        if (!digits) {
+            return '';
+        }
+        return digits.replace(/(\d{5})(?=\d)/g, '$1 ').trim();
+    }
+
+    getStoreInitials(name) {
+        const tokens = String(name || '').trim().split(/\s+/).filter(Boolean);
+        if (!tokens.length) {
+            return 'NF';
+        }
+        if (tokens.length === 1) {
+            return tokens[0].slice(0, 2).toUpperCase();
+        }
+        return `${tokens[0][0]}${tokens[1][0]}`.toUpperCase();
+    }
+
     buildThermalFiscalNoteMarkup(nota, printerProfile = 'auto') {
-        const layout = this.getFiscalPrinterLayout(printerProfile);
         const config = db.getConfig();
-        const lojaNome = (config.nomeLoja || 'EasyStore').trim();
-        const documento = (config.cnpj || '').trim() || 'Nao informado';
-        const email = (config.email || '').trim() || 'Nao informado';
-        const cidade = (config.pixCidade || '').trim() || 'Nao informada';
-        const pagamento = this.getVendaPagamentoLabel({ pagamento: nota.pagamento });
-        const itensHtml = (nota.itens || []).map((item) => `
-            <article class="item-row">
-                <div class="item-top">
-                    <span class="item-qtd">${item.qtd}x</span>
-                    <span class="item-nome">${item.nome}</span>
-                </div>
-                <div class="item-bottom">
-                    <span class="item-unit">${this.formatMoney(item.preco)}</span>
-                    <span class="item-subtotal">${this.formatMoney(item.preco * item.qtd)}</span>
-                </div>
-            </article>
-        `).join('');
+        const venda = this.getFiscalLinkedSale(nota);
+        const documentoBruto = (config.cnpj || '').trim();
+        const chaveAcesso = String(nota?.chaveAcesso || '').replace(/\D/g, '') || this.buildLocalFiscalAccessKey(nota, documentoBruto);
+        const urlConsultaSefaz = String(nota?.urlConsultaSefaz || '').trim() || this.buildNfeConsultaUrl(chaveAcesso);
+        const context = {
+            lojaNome: (config.nomeLoja || 'EasyStore').trim() || 'EasyStore',
+            documento: this.formatDocument(documentoBruto),
+            inscricaoEstadual: String(config.inscricaoEstadual || '').trim() || 'Não informado',
+            enderecoEmitente: this.getStoreAddressLine(config),
+            enderecoDestinatario: this.getClientAddressLine(nota, venda),
+            cidade: (config.pixCidade || '').trim(),
+            email: (config.email || '').trim(),
+            pagamentoLabel: this.getVendaPagamentoLabel({ pagamento: nota.pagamento }),
+            emitidoEm: this.formatDate(nota.dataEmissao || new Date().toISOString()),
+            emitidoDataIso: this.formatIsoDate(nota.dataEmissao || new Date().toISOString()),
+            emitidoHoraIso: this.formatIsoTime(nota.dataEmissao || new Date().toISOString()),
+            statusLabel: this.getFiscalStatusLabel(nota.status),
+            chaveAcesso,
+            protocoloAutorizacao: String(nota?.protocoloAutorizacao || '').trim() || '-',
+            urlConsultaSefaz,
+            nfeQrCodeUrl: this.buildNfeQrCodeUrl(urlConsultaSefaz),
+            venda
+        };
+
+        if (String(nota.tipo || '').toUpperCase() === 'NF-E') {
+            return this.buildFiscalNfeMarkup(nota, context);
+        }
+
+        return this.buildFiscalCouponMarkup(nota, context, printerProfile);
+    }
+
+    buildFiscalCouponMarkup(nota, context, printerProfile = 'auto') {
+        const itens = Array.isArray(nota.itens) ? nota.itens : [];
+        const venda = context.venda;
+        const unidades = itens.reduce((sum, item) => sum + Number(item.qtd || 0), 0);
+        const couponTitle = String(nota.tipo || '').toUpperCase() === 'NFC-E'
+            ? 'DOCUMENTO AUXILIAR DA NFC-E'
+            : `DOCUMENTO AUXILIAR - ${String(nota.tipo || 'FISCAL').toUpperCase()}`;
+        const isNarrow = printerProfile === 'thermal58';
+
+        const itensHtml = itens.map((item, index) => {
+            const produto = db.getProduto ? db.getProduto(item.id) : null;
+            const codigo = produto?.codigo || produto?.codigoBarras || item.id || '-';
+            const ncm = String(produto?.ncm || '').replace(/\D/g, '').slice(0, 8);
+            const quantidade = Number(item.qtd || 0);
+            const valorUnitario = Number(item.preco || 0);
+            const subtotal = quantidade * valorUnitario;
+
+            return `
+                <article class="fiscal-item">
+                    <div class="fiscal-item-top">
+                        <span>${String(index + 1).padStart(3, '0')} ${this.escapeHtml(codigo)}</span>
+                        <span>${this.formatMoney(subtotal)}</span>
+                    </div>
+                    <p class="fiscal-item-name">${this.escapeHtml(item.nome || 'Produto')}</p>
+                    <div class="fiscal-item-bottom">
+                        <span>${quantidade} x ${this.formatMoney(valorUnitario)}</span>
+                        <span>NCM ${ncm || '00000000'}</span>
+                    </div>
+                </article>
+            `;
+        }).join('');
+
+        const recebido = venda?.pagamento === 'dinheiro'
+            ? this.formatMoney(venda.valorRecebido || 0)
+            : '-';
+        const troco = venda?.pagamento === 'dinheiro'
+            ? this.formatMoney(venda.troco || 0)
+            : this.formatMoney(0);
+        const maquininha = venda?.maquininhaNome ? this.escapeHtml(venda.maquininhaNome) : '-';
+        const pixKey = venda?.pix?.chave ? this.escapeHtml(venda.pix.chave) : '-';
+        const observacoes = String(nota.observacoes || '').trim();
+        const clienteDocumento = String(nota?.cliente?.documento || '').replace(/\D/g, '');
+        const clienteDocLabel = clienteDocumento ? this.formatDocument(clienteDocumento) : 'Não informado';
+
         return `
-            <main class="thermal-receipt">
-                <header class="receipt-header">
-                    <h1>${lojaNome}</h1>
-                    <p class="meta-line">CPF/CNPJ: ${documento}</p>
-                    <p class="meta-line">E-mail: ${email}</p>
-                    <p class="meta-line">Cidade: ${cidade}</p>
-                    <p class="meta-line">${nota.tipo} No ${nota.numero} Serie ${nota.serie}</p>
-                    <p class="meta-line">Data: ${this.formatDate(nota.dataEmissao)}</p>
+            <main class="fiscal-doc fiscal-doc-cupom${isNarrow ? ' cupom-narrow' : ''}">
+                <header class="fiscal-center">
+                    <h1>${this.escapeHtml(context.lojaNome)}</h1>
+                    <p>CNPJ/CPF: ${this.escapeHtml(context.documento)}</p>
+                    <p>Cidade: ${this.escapeHtml(context.cidade || 'Não informada')}</p>
+                    <p>Email: ${this.escapeHtml(context.email || 'Não informado')}</p>
                 </header>
 
-                <div class="separator"></div>
-                <section class="receipt-items">
-                    ${itensHtml}
+                <section class="fiscal-box fiscal-center">
+                    <p class="fiscal-title">${this.escapeHtml(couponTitle)}</p>
+                    <p class="fiscal-small">Não permite aproveitamento de crédito de ICMS</p>
                 </section>
 
-                <div class="separator"></div>
-                <section class="receipt-summary">
-                    <div class="summary-line">
-                        <span>Pagamento</span>
-                        <span>${pagamento}</span>
-                    </div>
-                    <div class="summary-line total">
-                        <span>Total</span>
-                        <span>${this.formatMoney(nota.total)}</span>
-                    </div>
+                <section class="fiscal-box fiscal-meta-grid">
+                    <p><strong>Documento:</strong> ${this.escapeHtml(nota.tipo)} ${this.escapeHtml(String(nota.numero))} / Serie ${this.escapeHtml(String(nota.serie || 1))}</p>
+                    <p><strong>Emissao:</strong> ${this.escapeHtml(context.emitidoEm)}</p>
+                    <p><strong>Status:</strong> ${this.escapeHtml(context.statusLabel)}</p>
                 </section>
 
-                <div class="separator"></div>
-                <footer class="receipt-footer">
-                    <p>Documento auxiliar de venda.</p>
-                </footer>
+                <section class="fiscal-box">
+                    <p class="fiscal-list-head">ITEM CÓDIGO DESCRIÇÃO</p>
+                    ${itensHtml || '<p class="fiscal-empty">Sem itens na nota.</p>'}
+                </section>
+
+                <section class="fiscal-box fiscal-totals">
+                    <div><span>Qtd. itens</span><strong>${itens.length}</strong></div>
+                    <div><span>Total unidades</span><strong>${unidades}</strong></div>
+                    <div><span>Valor total</span><strong>${this.formatMoney(nota.total)}</strong></div>
+                    <div><span>Pagamento</span><strong>${this.escapeHtml(context.pagamentoLabel)}</strong></div>
+                    <div><span>Valor recebido</span><strong>${recebido}</strong></div>
+                    <div><span>Troco</span><strong>${troco}</strong></div>
+                </section>
+
+                <section class="fiscal-box">
+                    <p><strong>CPF/CNPJ cliente:</strong> ${this.escapeHtml(clienteDocLabel)}</p>
+                    <p><strong>Maquininha:</strong> ${maquininha}</p>
+                    <p><strong>Chave PIX:</strong> ${pixKey}</p>
+                    ${observacoes ? `<p><strong>Obs:</strong> ${this.escapeHtml(observacoes)}</p>` : ''}
+                </section>
+
+                <section class="fiscal-box fiscal-center">
+                    <p class="fiscal-small">Chave de acesso local (simulada)</p>
+                    <p class="fiscal-key">${this.escapeHtml(this.formatAccessKey(context.chaveAcesso))}</p>
+                    <p class="fiscal-warning">EMISSÃO LOCAL PARA CONFERÊNCIA. SEM VALIDADE FISCAL OFICIAL.</p>
+                </section>
+            </main>
+        `;
+    }
+
+    buildFiscalNfeMarkup(nota, context) {
+        const itens = Array.isArray(nota.itens) ? nota.itens : [];
+        const venda = context.venda;
+        const clienteNome = (nota.cliente?.nome || 'CONSUMIDOR FINAL').trim() || 'CONSUMIDOR FINAL';
+        const clienteDoc = this.formatDocument(nota.cliente?.documento || '');
+        const clienteEndereco = context.enderecoDestinatario || 'Não informado';
+        const naturezaOperação = String(nota.naturezaOperação || 'Venda de mercadoria').trim();
+        const finalidade = String(nota.finalidade || 'Normal').trim();
+        const dataEmissao = context.emitidoDataIso;
+        const horaEmissao = context.emitidoHoraIso;
+        const frete = Number(nota.frete ?? venda?.frete ?? 0);
+        const seguro = Number(nota.seguro ?? venda?.seguro ?? 0);
+        const desconto = Number(nota.desconto ?? venda?.desconto ?? 0);
+        const totalProdutos = itens.reduce((sum, item) => sum + (Number(item.qtd || 0) * Number(item.preco || 0)), 0);
+        const totalIcms = itens.reduce((sum, item) => {
+            const subtotal = Number(item.qtd || 0) * Number(item.preco || 0);
+            return sum + (subtotal * 0.18);
+        }, 0);
+        const totalBaseIcms = totalProdutos;
+        const valorTotal = Number(nota.total || 0);
+        const formaPagamento = String(nota.formaPagamento || context.pagamentoLabel || '').trim() || context.pagamentoLabel;
+        const dataVencimento = nota.dataVencimento ? this.formatIsoDate(nota.dataVencimento) : dataEmissao;
+        const instrucoesPagamento = String(nota.instrucoesPagamento || 'Pagamento conforme condicoes comerciais da venda.').trim();
+        const protocoloAutorizacao = String(nota.protocoloAutorizacao || context.protocoloAutorizacao || '-').trim() || '-';
+        const chaveAcessoDigits = String(context.chaveAcesso || '').replace(/\D/g, '');
+        const chaveAcessoFormatada = this.formatAccessKey(context.chaveAcesso);
+        const chaveAcessoBarcode = chaveAcessoDigits
+            ? this.buildNfeAccessKeyBarcodeSvg(chaveAcessoDigits, {
+                width: 860,
+                moduleWidth: 1.08,
+                barHeight: 58,
+                showText: true
+            })
+            : '';
+        const consultaUrl = context.urlConsultaSefaz || this.buildNfeConsultaUrl(context.chaveAcesso);
+        const qrCodeUrl = context.nfeQrCodeUrl || this.buildNfeQrCodeUrl(consultaUrl);
+        const incluirBoleto = Boolean(nota.cobrancaPropria) && this.isValidPaymentLine(nota.linhaDigitavel);
+        const linhaDigitavel = incluirBoleto ? this.formatPaymentLine(nota.linhaDigitavel) : '';
+        const pagamentoBarcode = incluirBoleto
+            ? this.buildCodabarSvg(this.formatCodabarValue(String(nota.linhaDigitavel || '').replace(/\D/g, '')), {
+                width: 760,
+                moduleWidth: 1.15,
+                barHeight: 58,
+                showText: false
+            })
+            : '';
+        const logoMonograma = this.getStoreInitials(context.lojaNome);
+
+        const rowsHtml = itens.map((item, index) => {
+            const produto = db.getProduto ? db.getProduto(item.id) : null;
+            const codigo = produto?.codigo || produto?.codigoBarras || item.id || '-';
+            const ncm = String(produto?.ncm || '').replace(/\D/g, '').slice(0, 8) || '00000000';
+            const cfop = String(item.cfop || produto?.cfop || '5102').replace(/\D/g, '').slice(0, 4) || '5102';
+            const unidade = String(item.unidade || 'UN').trim() || 'UN';
+            const quantidade = Number(item.qtd || 0);
+            const valorUnitario = Number(item.preco || 0);
+            const subtotal = quantidade * valorUnitario;
+            const aliquotaIcms = Number(item.aliquotaIcms || 18);
+            const valorIcms = subtotal * (aliquotaIcms / 100);
+            const outrosTributos = subtotal * 0.0925;
+            return `
+                <tr>
+                    <td>${this.escapeHtml(String(codigo))}</td>
+                    <td>${this.escapeHtml(item.nome || 'Produto')}</td>
+                    <td>${this.escapeHtml(ncm)}</td>
+                    <td>${this.escapeHtml(cfop)}</td>
+                    <td>${this.escapeHtml(unidade)}</td>
+                    <td>${quantidade.toFixed(2)}</td>
+                    <td>${this.formatMoney(valorUnitario)}</td>
+                    <td>${this.formatMoney(subtotal)}</td>
+                    <td>${aliquotaIcms.toFixed(2)}%</td>
+                    <td>${this.formatMoney(valorIcms)}</td>
+                    <td>${this.formatMoney(outrosTributos)}</td>
+                </tr>
+            `;
+        }).join('');
+
+        return `
+            <main class="fiscal-doc fiscal-doc-nfe">
+                <div class="nfe-watermark">Documento Fiscal</div>
+
+                <header class="nfe-main-header">
+                    <section class="nfe-logo-block">
+                        <div class="nfe-logo-mark">${this.escapeHtml(logoMonograma)}</div>
+                        <div class="nfe-logo-text">
+                            <p class="nfe-logo-store">${this.escapeHtml(context.lojaNome)}</p>
+                            <p class="nfe-logo-doc">CNPJ ${this.escapeHtml(context.documento)}</p>
+                        </div>
+                    </section>
+                    <section class="nfe-title-block">
+                        <h1>NOTA FISCAL ELETRONICA</h1>
+                        <p>Modelo ${this.escapeHtml(String(nota.modelo || '55'))} | Status ${this.escapeHtml(context.statusLabel)}</p>
+                    </section>
+                </header>
+
+                <section class="danfe-box nfe-key-box">
+                    <p><strong>Chave de Acesso:</strong> ${this.escapeHtml(chaveAcessoFormatada || '-')}</p>
+                    <p><strong>Protocolo SEFAZ:</strong> ${this.escapeHtml(protocoloAutorizacao)}</p>
+                    <p><strong>Consulta:</strong> ${consultaUrl ? this.escapeHtml(consultaUrl) : '-'}</p>
+                </section>
+
+                <section class="danfe-box nfe-access-barcode-box">
+                    <h4>Código de barras da chave de acesso (DANFE)</h4>
+                    <div class="nfe-access-barcode">
+                        ${chaveAcessoBarcode || '<p>Código de barras indisponível sem chave de acesso.</p>'}
+                    </div>
+                    <p class="nfe-access-barcode-note">
+                        O código de barras no DANFE representa a Chave de Acesso de 44 dígitos. Ele permite leitura óptica rápida para consultar a autenticidade da nota no portal da Fazenda, facilita o recebimento de mercadorias, automação de estoque e rastreabilidade dos produtos.
+                    </p>
+                    <p class="nfe-access-barcode-note">
+                        <strong>Identificação da Nota (DANFE):</strong> o código de barras unidimensional contem a chave de acesso, permitindo leitura por scanner e consulta no site da Receita Federal.
+                    </p>
+                </section>
+
+                <section class="danfe-grid nfe-data-grid">
+                    <section class="danfe-box">
+                        <h4>Emitente</h4>
+                        <p><strong>Nome:</strong> ${this.escapeHtml(context.lojaNome)}</p>
+                        <p><strong>CNPJ:</strong> ${this.escapeHtml(context.documento)}</p>
+                        <p><strong>Inscrição Estadual:</strong> ${this.escapeHtml(context.inscricaoEstadual)}</p>
+                        <p><strong>Endereço:</strong> ${this.escapeHtml(context.enderecoEmitente)}</p>
+                    </section>
+                    <section class="danfe-box">
+                        <h4>Destinatario</h4>
+                        <p><strong>Nome:</strong> ${this.escapeHtml(clienteNome)}</p>
+                        <p><strong>CPF/CNPJ:</strong> ${this.escapeHtml(clienteDoc)}</p>
+                        <p><strong>Endereço:</strong> ${this.escapeHtml(clienteEndereco)}</p>
+                    </section>
+                </section>
+
+                <section class="danfe-grid nfe-data-grid">
+                    <section class="danfe-box">
+                        <h4>Identificação da NF-e</h4>
+                        <p><strong>NF-e No:</strong> ${this.escapeHtml(String(nota.numero || '-'))}</p>
+                        <p><strong>Serie:</strong> ${this.escapeHtml(String(nota.serie || 1))}</p>
+                        <p><strong>Data Emissao:</strong> ${this.escapeHtml(dataEmissao)}</p>
+                        <p><strong>Hora Emissao:</strong> ${this.escapeHtml(horaEmissao)}</p>
+                    </section>
+                    <section class="danfe-box">
+                        <h4>Operação</h4>
+                        <p><strong>Natureza da Operação:</strong> ${this.escapeHtml(naturezaOperação)}</p>
+                        <p><strong>Finalidade:</strong> ${this.escapeHtml(finalidade)}</p>
+                    </section>
+                </section>
+
+                <section class="danfe-box">
+                    <h4>Itens</h4>
+                    <table class="danfe-table">
+                        <thead>
+                            <tr>
+                                <th>Código</th>
+                                <th>Descricao</th>
+                                <th>NCM</th>
+                                <th>CFOP</th>
+                                <th>UN</th>
+                                <th>Qtd</th>
+                                <th>Vl. unit</th>
+                                <th>Vl. total</th>
+                                <th>Aliq. ICMS</th>
+                                <th>Vl. ICMS</th>
+                                <th>Outros trib.</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${rowsHtml || '<tr><td colspan="11">Sem itens.</td></tr>'}
+                        </tbody>
+                    </table>
+                </section>
+
+                <section class="danfe-grid nfe-data-grid">
+                    <section class="danfe-box">
+                        <h4>Totais</h4>
+                        <p><strong>Base ICMS:</strong> ${this.formatMoney(totalBaseIcms)}</p>
+                        <p><strong>Valor ICMS:</strong> ${this.formatMoney(totalIcms)}</p>
+                        <p><strong>Valor Produtos:</strong> ${this.formatMoney(totalProdutos)}</p>
+                        <p><strong>Frete:</strong> ${this.formatMoney(frete)}</p>
+                        <p><strong>Seguro:</strong> ${this.formatMoney(seguro)}</p>
+                        <p><strong>Desconto:</strong> ${this.formatMoney(desconto)}</p>
+                        <p><strong>Valor Total:</strong> ${this.formatMoney(valorTotal)}</p>
+                    </section>
+                    <section class="danfe-box">
+                        <h4>Informações de Pagamento</h4>
+                        <p><strong>Forma:</strong> ${this.escapeHtml(formaPagamento)}</p>
+                        <p><strong>Vencimento:</strong> ${this.escapeHtml(dataVencimento)}</p>
+                        <p><strong>Instrucoes:</strong> ${this.escapeHtml(instrucoesPagamento)}</p>
+                        ${incluirBoleto
+                ? `<p><strong>Linha digitavel:</strong> ${this.escapeHtml(linhaDigitavel)}</p>`
+                : '<p><strong>Cobrança própria:</strong> Não informada.</p>'}
+                    </section>
+                </section>
+
+                <section class="danfe-grid nfe-footer-grid">
+                    <section class="danfe-box">
+                        <h4>Observacoes</h4>
+                        <p>${this.escapeHtml(String(nota.observacoes || 'Documento auxiliar local para conferência e impressão.'))}</p>
+                        <p><strong>Assinatura/Autenticacao:</strong> Protocolo ${this.escapeHtml(protocoloAutorizacao)} | Chave ${this.escapeHtml(chaveAcessoFormatada || '-')}</p>
+                        <p class="fiscal-warning">Preencha NCM, CFOP, CST/CSOSN, base e alíquotas conforme legislação e regime tributario.</p>
+                    </section>
+                    <section class="danfe-box nfe-qr-box">
+                        <p class="danfe-label">QR Code NF-e</p>
+                        ${qrCodeUrl
+                ? `<img src="${this.escapeHtml(qrCodeUrl)}" alt="QR Code de consulta da NF-e">`
+                : '<p>QR Code indisponível sem chave de acesso.</p>'}
+                    </section>
+                </section>
+
+                ${incluirBoleto ? `
+                    <section class="danfe-box nfe-payment-barcode-box">
+                        <h4>Código de Barras para pagamento (cobrança própria)</h4>
+                        <div class="nfe-payment-barcode">${pagamentoBarcode}</div>
+                    </section>
+                ` : ''}
+
+                <section class="nfe-bottom-note">
+                    <p>${this.escapeHtml(context.lojaNome)} | ${this.escapeHtml(context.documento)} | ${this.escapeHtml(context.enderecoEmitente)}</p>
+                    <p>${consultaUrl ? `Consulta NF-e: ${this.escapeHtml(consultaUrl)}` : 'Consulta NF-e disponível após autorização na SEFAZ.'}</p>
+                </section>
             </main>
         `;
     }
@@ -1133,79 +1897,391 @@ class App {
                 line-height: ${layout.lineHeight};
             }
 
-            .thermal-receipt {
+            .fiscal-doc {
                 width: ${layout.receiptWidth};
                 max-width: ${layout.receiptMaxWidth};
                 margin: 0 auto;
+                color: #000;
             }
 
-            .receipt-header h1 {
-                margin: 0 0 1mm;
+            .fiscal-doc p,
+            .fiscal-doc h1,
+            .fiscal-doc h2,
+            .fiscal-doc h3,
+            .fiscal-doc h4 {
+                margin: 0;
+            }
+
+            .fiscal-print-routing {
+                border: 1px dashed #000;
+                padding: 6px;
+                margin-bottom: 8px;
+                font-size: ${layout.itemBottomFont};
+                line-height: 1.35;
+            }
+
+            .fiscal-print-routing p {
+                margin-bottom: 3px;
+            }
+
+            .fiscal-center {
+                text-align: center;
+            }
+
+            .fiscal-center h1 {
                 font-size: ${layout.titleFont};
-                line-height: 1.2;
-                text-align: center;
                 text-transform: uppercase;
+                line-height: 1.15;
+                margin-bottom: 1mm;
             }
 
-            .meta-line {
-                margin: 0 0 0.5mm;
-                text-align: center;
+            .fiscal-center p {
+                margin-bottom: 0.7mm;
             }
 
-            .separator {
+            .fiscal-box {
                 border-top: 1px dashed #000;
-                margin: 2mm 0;
+                padding-top: 1.5mm;
+                margin-top: 1.5mm;
             }
 
-            .item-row {
-                margin-bottom: 1.4mm;
+            .fiscal-title {
+                font-weight: 700;
+                letter-spacing: 0.2px;
+                margin-bottom: 0.7mm;
             }
 
-            .item-top,
-            .item-bottom,
-            .summary-line {
+            .fiscal-small {
+                font-size: ${layout.itemBottomFont};
+            }
+
+            .fiscal-meta-grid p {
+                margin-bottom: 0.8mm;
+                word-break: break-word;
+            }
+
+            .fiscal-list-head {
+                font-weight: 700;
+                border-bottom: 1px solid #000;
+                padding-bottom: 0.7mm;
+                margin-bottom: 1mm;
+            }
+
+            .fiscal-item {
+                border-bottom: 1px dotted #000;
+                padding-bottom: 1mm;
+                margin-bottom: 1mm;
+            }
+
+            .fiscal-item-top,
+            .fiscal-item-bottom,
+            .fiscal-totals div {
                 display: flex;
                 justify-content: space-between;
                 align-items: flex-start;
                 gap: 8px;
             }
 
-            .item-qtd {
-                min-width: 24px;
+            .fiscal-item-top {
                 font-weight: 700;
             }
 
-            .item-nome {
-                flex: 1;
-                text-align: left;
+            .fiscal-item-name {
+                margin-top: 0.5mm;
+                margin-bottom: 0.6mm;
                 word-break: break-word;
             }
 
-            .item-bottom {
-                margin-top: 0.4mm;
+            .fiscal-item-bottom {
                 font-size: ${layout.itemBottomFont};
             }
 
-            .summary-line.total {
-                margin-top: 1mm;
-                font-size: ${layout.totalFont};
-                font-weight: 700;
-            }
-
-            .obs-title {
-                margin: 0 0 0.8mm;
-                font-weight: 700;
-            }
-
-            .obs-text {
-                margin: 0;
-                white-space: pre-wrap;
-                word-break: break-word;
-            }
-
-            .receipt-footer p {
-                margin: 0 0 0.6mm;
+            .fiscal-empty {
                 text-align: center;
+                padding: 3mm 0;
+                color: #444;
+            }
+
+            .fiscal-totals div {
+                margin-bottom: 0.8mm;
+            }
+
+            .fiscal-totals strong {
+                font-size: ${layout.totalFont};
+            }
+
+            .fiscal-key {
+                margin-top: 1mm;
+                margin-bottom: 1mm;
+                font-weight: 700;
+                letter-spacing: 0.3px;
+                word-break: break-all;
+            }
+
+            .fiscal-warning {
+                font-weight: 700;
+                font-size: ${layout.itemBottomFont};
+                line-height: 1.3;
+            }
+
+            .cupom-narrow .fiscal-item-top,
+            .cupom-narrow .fiscal-item-bottom,
+            .cupom-narrow .fiscal-totals div {
+                gap: 4px;
+            }
+
+            .fiscal-doc-nfe {
+                font-family: Arial, Helvetica, sans-serif;
+                font-size: 10px;
+                line-height: 1.35;
+                position: relative;
+                min-height: 260mm;
+            }
+
+            .nfe-watermark {
+                position: absolute;
+                inset: 0;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                pointer-events: none;
+                color: rgba(0, 0, 0, 0.06);
+                font-size: 56px;
+                font-weight: 700;
+                text-transform: uppercase;
+                transform: rotate(-28deg);
+                letter-spacing: 3px;
+                z-index: 0;
+            }
+
+            .nfe-main-header {
+                display: grid;
+                grid-template-columns: 1fr 2fr;
+                gap: 10px;
+                align-items: center;
+                margin-bottom: 8px;
+                border: 1px solid #000;
+                padding: 8px;
+                position: relative;
+                z-index: 1;
+            }
+
+            .nfe-logo-block {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+            }
+
+            .nfe-logo-mark {
+                width: 52px;
+                height: 52px;
+                border: 1px solid #000;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 20px;
+                font-weight: 700;
+                border-radius: 6px;
+            }
+
+            .nfe-logo-store {
+                font-weight: 700;
+                text-transform: uppercase;
+                font-size: 11px;
+                margin-bottom: 2px;
+            }
+
+            .nfe-logo-doc {
+                font-size: 9px;
+            }
+
+            .nfe-title-block {
+                text-align: center;
+            }
+
+            .nfe-title-block h1 {
+                margin: 0 0 4px;
+                font-size: 24px;
+                letter-spacing: 0.8px;
+                text-transform: uppercase;
+            }
+
+            .nfe-title-block p {
+                margin: 0;
+                font-size: 11px;
+                text-transform: uppercase;
+            }
+
+            .nfe-key-box {
+                position: relative;
+                z-index: 1;
+            }
+
+            .nfe-key-box p {
+                margin-bottom: 3px;
+            }
+
+            .nfe-access-barcode-box {
+                margin-bottom: 6px;
+            }
+
+            .nfe-access-barcode {
+                margin-top: 4px;
+                border: 1px solid #000;
+                padding: 4px;
+                background: #fff;
+            }
+
+            .nfe-access-barcode svg {
+                width: 100%;
+                height: auto;
+                display: block;
+            }
+
+            .nfe-access-barcode-note {
+                margin-top: 4px;
+                font-size: 9px;
+                line-height: 1.35;
+            }
+
+            .danfe-header {
+                display: grid;
+                grid-template-columns: minmax(0, 1fr) 300px;
+                gap: 6px;
+                margin-bottom: 6px;
+            }
+
+            .danfe-grid {
+                display: grid;
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                gap: 6px;
+                margin-bottom: 6px;
+            }
+
+            .danfe-box {
+                border: 1px solid #000;
+                padding: 6px;
+                position: relative;
+                z-index: 1;
+            }
+
+            .danfe-highlight {
+                text-align: center;
+            }
+
+            .danfe-highlight h3 {
+                font-size: 18px;
+                margin-bottom: 2px;
+            }
+
+            .danfe-highlight p {
+                margin-bottom: 2px;
+            }
+
+            .danfe-box h2 {
+                font-size: 17px;
+                text-transform: uppercase;
+                margin-bottom: 4px;
+            }
+
+            .danfe-box h4 {
+                font-size: 12px;
+                margin-bottom: 6px;
+                text-transform: uppercase;
+            }
+
+            .danfe-box p {
+                margin-bottom: 3px;
+            }
+
+            .danfe-label {
+                font-size: 10px;
+                text-transform: uppercase;
+            }
+
+            .nfe-data-grid {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+
+            .danfe-table {
+                width: 100%;
+                border-collapse: collapse;
+                font-size: 10px;
+            }
+
+            .danfe-table th,
+            .danfe-table td {
+                border: 1px solid #000;
+                padding: 4px;
+                vertical-align: top;
+            }
+
+            .danfe-table th {
+                background: #f2f2f2;
+                text-transform: uppercase;
+                font-size: 9px;
+                font-weight: 700;
+            }
+
+            .nfe-footer-grid {
+                grid-template-columns: minmax(0, 1.8fr) minmax(220px, 0.8fr);
+                align-items: stretch;
+            }
+
+            .nfe-qr-box {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                gap: 6px;
+            }
+
+            .nfe-qr-box img {
+                width: 160px;
+                height: 160px;
+                object-fit: contain;
+                border: 1px solid #000;
+                padding: 4px;
+                background: #fff;
+            }
+
+            .nfe-payment-barcode-box {
+                margin-top: 6px;
+                position: relative;
+                z-index: 1;
+            }
+
+            .nfe-payment-barcode {
+                margin-top: 6px;
+                border: 1px solid #000;
+                padding: 5px;
+                background: #fff;
+            }
+
+            .nfe-bottom-note {
+                margin-top: 8px;
+                border-top: 1px solid #000;
+                padding-top: 6px;
+                font-size: 9px;
+                line-height: 1.3;
+                position: relative;
+                z-index: 1;
+            }
+
+            .nfe-bottom-note p {
+                margin-bottom: 2px;
+            }
+
+            @media (max-width: 960px) {
+                .nfe-main-header,
+                .danfe-header {
+                    grid-template-columns: 1fr;
+                }
+
+                .danfe-grid,
+                .nfe-footer-grid {
+                    grid-template-columns: 1fr;
+                }
             }
 
             @media print {
@@ -1222,7 +2298,6 @@ class App {
             }
         `;
     }
-
     showFiscalNoteModal(content, printStyles = '') {
         if (!this.elements.fiscalNoteModal || !this.elements.fiscalNoteContent) {
             return;
@@ -1241,7 +2316,9 @@ class App {
 
     printFiscalNoteFromModal() {
         const content = this.lastFiscalNoteHtml || this.elements.fiscalNoteContent?.innerHTML;
-        const printStyles = this.lastFiscalNotePrintStyles || this.getThermalFiscalNotePrintStyles(this.getFiscalPrinterProfile());
+        const config = db.getConfig ? db.getConfig() : {};
+        const fallbackProfile = this.normalizeNfcePrinterProfile(config.fiscalPrinterProfileNfce || config.fiscalPrinterProfile);
+        const printStyles = this.lastFiscalNotePrintStyles || this.getThermalFiscalNotePrintStyles(fallbackProfile);
         if (!content) {
             return;
         }
@@ -1279,6 +2356,102 @@ class App {
         }
         this.lastFiscalNoteHtml = null;
         this.lastFiscalNotePrintStyles = '';
+    }
+
+    buildNfeAccessKeyBarcodeSvg(
+        accessKey,
+        {
+            width = 860,
+            height = null,
+            moduleWidth = 1.1,
+            barHeight = 58,
+            showText = true,
+            textSize = 13,
+            textGap = 7
+        } = {}
+    ) {
+        const digits = String(accessKey || '').replace(/\D/g, '');
+        if (!digits) {
+            return '';
+        }
+
+        const pattern = this.encodeInterleaved2of5(digits);
+        if (!pattern.length) {
+            return '<div style="color:#b00; font-size:12px;">Código da chave de acesso inválido para código de barras.</div>';
+        }
+
+        let x = 0;
+        const rects = pattern.map((widthUnit, index) => {
+            const elementWidth = widthUnit * moduleWidth;
+            const isBar = index % 2 === 0;
+            const rect = isBar
+                ? `<rect x="${x}" y="0" width="${elementWidth}" height="${barHeight}" fill="#000" />`
+                : '';
+            x += elementWidth;
+            return rect;
+        }).join('');
+
+        const quietZone = moduleWidth * 10;
+        const totalWidth = Math.max(x + (quietZone * 2), width);
+        const startX = (totalWidth - x) / 2;
+        const label = this.formatAccessKey(digits);
+        const contentHeight = showText ? barHeight + textGap + textSize : barHeight;
+        const svgHeight = height || contentHeight;
+        const textNode = showText
+            ? `<text x="50%" y="${barHeight + textGap + textSize - 2}" text-anchor="middle" font-family="monospace" font-size="${textSize}">${this.escapeHtml(label)}</text>`
+            : '';
+
+        return `
+            <svg xmlns="http://www.w3.org/2000/svg" width="${totalWidth}" height="${svgHeight}" viewBox="0 0 ${totalWidth} ${contentHeight}" role="img" aria-label="Código de barras da chave de acesso da NF-e">
+                <rect width="100%" height="100%" fill="#fff" />
+                <g transform="translate(${startX},0)">${rects}</g>
+                ${textNode}
+            </svg>
+        `;
+    }
+
+    encodeInterleaved2of5(value) {
+        const digits = String(value || '').replace(/\D/g, '');
+        if (!digits) {
+            return [];
+        }
+
+        const normalized = digits.length % 2 === 0 ? digits : `0${digits}`;
+        const map = {
+            '0': 'nnwwn',
+            '1': 'wnnnw',
+            '2': 'nwnnw',
+            '3': 'wwnnn',
+            '4': 'nnwnw',
+            '5': 'wnwnn',
+            '6': 'nwwnn',
+            '7': 'nnnww',
+            '8': 'wnnwn',
+            '9': 'nwnwn'
+        };
+
+        const units = [];
+
+        // Start pattern (bar/space/bar/space) for Interleaved 2 of 5.
+        units.push(1, 1, 1, 1);
+
+        for (let index = 0; index < normalized.length; index += 2) {
+            const barPattern = map[normalized[index]];
+            const spacePattern = map[normalized[index + 1]];
+            if (!barPattern || !spacePattern) {
+                return [];
+            }
+
+            for (let patternIndex = 0; patternIndex < 5; patternIndex += 1) {
+                units.push(barPattern[patternIndex] === 'w' ? 3 : 1);
+                units.push(spacePattern[patternIndex] === 'w' ? 3 : 1);
+            }
+        }
+
+        // Stop pattern (bar/space/bar) for Interleaved 2 of 5.
+        units.push(3, 1, 1);
+
+        return units;
     }
 
     formatCodabarValue(value) {
@@ -1398,13 +2571,13 @@ class App {
     addItemByScan({ source = 'manual', forceQuantity = 1, focusScanInput = true } = {}) {
         const barcode = this.elements.vendaScanInput.value.trim();
         if (!barcode) {
-            this.mostrarMsg('Informe o codigo de barras para adicionar o produto.', 'warning');
+            this.mostrarMsg('Informe o código de barras para adicionar o produto.', 'warning');
             return false;
         }
 
         const produto = this.findProductByBarcode(barcode);
         if (!produto) {
-            this.mostrarMsg('Produto nao encontrado para este codigo de barras.', 'warning');
+            this.mostrarMsg('Produto não encontrado para este código de barras.', 'warning');
             return false;
         }
 
@@ -1418,8 +2591,11 @@ class App {
             return false;
         }
 
-        this.mostrarMsg(`Scanner: "${produto.nome}" ${this.formatMoney(produto.preco)} adicionado.`, 'success');
-        this.updateSaleEntryStatus(`Leitura confirmada: ${produto.nome} | ${this.formatMoney(produto.preco)} adicionado ao carrinho.`);
+        const precoScanner = this.isWholesaleFiscalProfile()
+            ? `${this.formatMoney(0)} (editável)`
+            : this.formatMoney(produto.preco);
+        this.mostrarMsg(`Scanner: "${produto.nome}" ${precoScanner} adicionado.`, 'success');
+        this.updateSaleEntryStatus(`Leitura confirmada: ${produto.nome} | ${precoScanner} adicionado ao carrinho.`);
         this.elements.vendaScanInput.value = '';
         if (focusScanInput && this.isSectionActive('vendas')) {
             this.elements.vendaScanInput.focus();
@@ -1435,10 +2611,14 @@ class App {
         }) || null;
     }
 
-    async openScannerModal() {
+    async openScannerModal({ mode = 'sale', closeAfterSuccess = false } = {}) {
+        this.scannerMode = mode;
+        this.scannerCloseAfterSuccess = Boolean(closeAfterSuccess);
         this.elements.scannerModal.classList.add('show');
         this.elements.scannerModal.setAttribute('aria-hidden', 'false');
-        this.elements.scannerStatus.textContent = 'Aguardando câmera...';
+        this.elements.scannerStatus.textContent = mode === 'product'
+            ? 'Aguardando câmera para ler o código do produto...'
+            : 'Aguardando câmera...';
 
         if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
             this.elements.scannerStatus.textContent = 'Seu navegador não suporta acesso à câmera.';
@@ -1496,12 +2676,16 @@ class App {
 
         this.currentScannedBarcode = normalizedValue;
         this.lastBarcodeDetectedAt = now;
-        this.elements.vendaScanInput.value = normalizedValue;
-        this.elements.scannerStatus.textContent = `Codigo detectado: ${normalizedValue}`;
+        this.elements.scannerStatus.textContent = `Código detectado: ${normalizedValue}`;
 
-        const added = this.addItemByScan({ source: 'camera', forceQuantity: 1, focusScanInput: false });
-        if (added) {
-            this.elements.scannerStatus.textContent = `Item adicionado: ${normalizedValue}. Continue escaneando...`;
+        if (this.scannerMode === 'product') {
+            this.handleProductBarcodeDetected(normalizedValue);
+        } else {
+            this.elements.vendaScanInput.value = normalizedValue;
+            const added = this.addItemByScan({ source: 'camera', forceQuantity: 1, focusScanInput: false });
+            if (added) {
+                this.elements.scannerStatus.textContent = `Item adicionado: ${normalizedValue}. Continue escaneando...`;
+            }
         }
 
         window.setTimeout(() => {
@@ -1529,9 +2713,273 @@ class App {
 
         this.elements.scannerModal.classList.remove('show');
         this.elements.scannerModal.setAttribute('aria-hidden', 'true');
-        this.elements.scannerStatus.textContent = 'Aguardando permissao da camera.';
+        this.elements.scannerStatus.textContent = 'Aguardando permissão da câmera.';
         this.currentScannedBarcode = null;
         this.lastBarcodeDetectedAt = 0;
+        this.scannerMode = 'sale';
+        this.scannerCloseAfterSuccess = false;
+    }
+
+    openProductBarcodeScanner() {
+        this.openScannerModal({ mode: 'product', closeAfterSuccess: true });
+    }
+
+    handleProductBarcodeDetected(barcodeValue) {
+        if (!this.elements.prodBarcode) {
+            return;
+        }
+
+        this.elements.prodBarcode.value = barcodeValue;
+        this.elements.scannerStatus.textContent = `Código detectado: ${barcodeValue}`;
+
+        const produtoExistente = this.findProductByBarcode(barcodeValue);
+        const isProdutoEditado = Boolean(produtoExistente && this.prodEditando && produtoExistente.id === this.prodEditando);
+
+        if (produtoExistente && !isProdutoEditado) {
+            const abrirExistente = window.confirm(
+                `Este código já está cadastrado para "${produtoExistente.nome}". Deseja abrir este produto para edição?`
+            );
+            this.closeScannerModal();
+
+            if (abrirExistente) {
+                this.editarProd(produtoExistente.id);
+                return;
+            }
+
+            if (!this.elements.modal.classList.contains('show')) {
+                this.abrirModalProd();
+            }
+            this.elements.prodBarcode.focus();
+            this.elements.prodBarcode.select();
+            this.mostrarMsg(`Código lido para cadastro. Já existe produto com este código: ${produtoExistente.nome}.`, 'warning');
+            return;
+        }
+
+        this.mostrarMsg(`Código de barras ${barcodeValue} preenchido no cadastro do produto.`, 'success');
+        if (this.scannerCloseAfterSuccess) {
+            this.closeScannerModal();
+        }
+        if (this.elements.modal.classList.contains('show')) {
+            this.elements.prodBarcode.focus();
+            this.elements.prodBarcode.select();
+        }
+    }
+
+    openSaleProductPicker() {
+        if (!this.isSectionActive('vendas') || !this.elements.saleProductModal) {
+            return;
+        }
+
+        this.saleProductPickerResults = [];
+        this.saleProductPickerIndex = -1;
+        if (this.elements.saleProductSearch) {
+            this.elements.saleProductSearch.value = '';
+        }
+        if (this.elements.saleProductQty) {
+            const rawCurrentQty = Number(this.elements.vendaQty?.value);
+            const currentQty = Number.isFinite(rawCurrentQty) ? Math.floor(rawCurrentQty) : 1;
+            this.elements.saleProductQty.value = String(currentQty > 0 ? currentQty : 1);
+        }
+        this.renderSaleProductPicker();
+        this.elements.saleProductModal.classList.add('show');
+        this.elements.saleProductModal.setAttribute('aria-hidden', 'false');
+
+        window.setTimeout(() => {
+            if (this.elements.saleProductSearch) {
+                this.elements.saleProductSearch.focus();
+                this.elements.saleProductSearch.select();
+            }
+        }, 50);
+    }
+
+    closeSaleProductPicker({ restoreFocus = true } = {}) {
+        if (!this.elements.saleProductModal) {
+            return;
+        }
+
+        this.elements.saleProductModal.classList.remove('show');
+        this.elements.saleProductModal.setAttribute('aria-hidden', 'true');
+
+        if (restoreFocus && this.isSectionActive('vendas') && this.elements.vendaScanInput) {
+            this.elements.vendaScanInput.focus();
+        }
+    }
+
+    renderSaleProductPicker() {
+        if (!this.elements.tbSaleProductPicker) {
+            return;
+        }
+
+        const query = (this.elements.saleProductSearch?.value || '').trim().toLowerCase();
+        const produtos = db.getProdutos().filter((produto) => {
+            if (!query) {
+                return true;
+            }
+            const codigoBarras = String(produto.codigoBarras || '').toLowerCase();
+            return String(produto.nome || '').toLowerCase().includes(query)
+                || String(produto.codigo || '').toLowerCase().includes(query)
+                || codigoBarras.includes(query);
+        });
+        const selectedId = this.saleProductPickerResults[this.saleProductPickerIndex]?.id;
+        this.saleProductPickerResults = produtos;
+
+        if (!produtos.length) {
+            this.saleProductPickerIndex = -1;
+            this.elements.tbSaleProductPicker.innerHTML = '<tr><td colspan="5" class="empty">Nenhum produto encontrado</td></tr>';
+            if (this.elements.saleProductPickerStatus) {
+                this.elements.saleProductPickerStatus.textContent = 'Nenhum produto encontrado para essa busca.';
+            }
+            return;
+        }
+        const previousSelectionIndex = selectedId
+            ? produtos.findIndex((produto) => produto.id === selectedId && this.isSaleProductSelectable(produto))
+            : -1;
+        this.saleProductPickerIndex = previousSelectionIndex >= 0
+            ? previousSelectionIndex
+            : this.getFirstAvailableSaleProductIndex(produtos);
+
+        this.elements.tbSaleProductPicker.innerHTML = produtos.map((produto, index) => {
+            const semEstoque = Number(produto.estoque || 0) <= 0;
+            const selectedClass = index === this.saleProductPickerIndex ? ' sale-product-row-selected' : '';
+            return `
+                <tr class="${selectedClass.trim()}" data-picker-index="${index}">
+                    <td>${produto.codigo}</td>
+                    <td>${produto.nome}</td>
+                    <td>${produto.estoque}</td>
+                    <td>${this.formatMoney(produto.preco)}</td>
+                    <td>
+                        <button
+                            type="button"
+                            class="btn btn-primary btn-small sale-product-action-btn"
+                            data-pick-product="${produto.id}"
+                            ${semEstoque ? 'disabled' : ''}
+                        >
+                            ${semEstoque ? 'Sem estoque' : 'Selecionar'}
+                        </button>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+        this.ensureSaleProductSelectionVisible();
+
+        if (this.elements.saleProductPickerStatus) {
+            const disponíveis = produtos.filter((produto) => this.isSaleProductSelectable(produto)).length;
+            this.elements.saleProductPickerStatus.textContent = `${produtos.length} produto(s) listado(s), ${disponíveis} disponível(is). Use setas para navegar, TAB para botões e ENTER para selecionar.`;
+        }
+    }
+
+    pickFirstSaleProductFromPicker() {
+        this.pickSaleProductFromCurrentSelection();
+    }
+
+    isSaleProductSelectable(produto) {
+        return Number(produto?.estoque || 0) > 0;
+    }
+
+    getFirstAvailableSaleProductIndex(produtos = this.saleProductPickerResults) {
+        return produtos.findIndex((produto) => this.isSaleProductSelectable(produto));
+    }
+
+    moveSaleProductPickerSelection(step) {
+        const produtos = this.saleProductPickerResults;
+        if (!produtos.length) {
+            return;
+        }
+
+        const availableIndexes = produtos
+            .map((produto, index) => (this.isSaleProductSelectable(produto) ? index : -1))
+            .filter((index) => index >= 0);
+
+        if (!availableIndexes.length) {
+            this.mostrarMsg('Nenhum produto com estoque disponível nesta lista.', 'warning');
+            return;
+        }
+
+        if (this.saleProductPickerIndex < 0 || !this.isSaleProductSelectable(produtos[this.saleProductPickerIndex])) {
+            this.saleProductPickerIndex = availableIndexes[0];
+        } else {
+            const currentPosition = availableIndexes.indexOf(this.saleProductPickerIndex);
+            const nextPosition = (currentPosition + step + availableIndexes.length) % availableIndexes.length;
+            this.saleProductPickerIndex = availableIndexes[nextPosition];
+        }
+
+        this.renderSaleProductPicker();
+    }
+
+    ensureSaleProductSelectionVisible() {
+        if (!this.elements.tbSaleProductPicker || this.saleProductPickerIndex < 0) {
+            return;
+        }
+
+        const selectedRow = this.elements.tbSaleProductPicker.querySelector(`tr[data-picker-index="${this.saleProductPickerIndex}"]`);
+        if (selectedRow) {
+            selectedRow.scrollIntoView({ block: 'nearest' });
+        }
+    }
+
+    getSaleProductPickerQuantity() {
+        const rawQuantity = Number(this.elements.saleProductQty?.value);
+        const quantity = Number.isFinite(rawQuantity) ? Math.floor(rawQuantity) : 1;
+        return quantity > 0 ? quantity : 1;
+    }
+
+    pickSaleProductFromCurrentSelection() {
+        if (!this.saleProductPickerResults.length) {
+            this.mostrarMsg('Nenhum produto encontrado para selecionar.', 'warning');
+            return;
+        }
+
+        let selectedProduct = this.saleProductPickerResults[this.saleProductPickerIndex];
+        if (!this.isSaleProductSelectable(selectedProduct)) {
+            const fallbackIndex = this.getFirstAvailableSaleProductIndex();
+            selectedProduct = fallbackIndex >= 0 ? this.saleProductPickerResults[fallbackIndex] : null;
+            if (fallbackIndex >= 0) {
+                this.saleProductPickerIndex = fallbackIndex;
+            }
+        }
+
+        if (!selectedProduct) {
+            this.mostrarMsg('Nenhum produto disponível para selecionar.', 'warning');
+            return;
+        }
+
+        this.pickSaleProductFromPicker(selectedProduct.id);
+    }
+
+    pickSaleProductFromPicker(productId) {
+        if (!productId) {
+            return;
+        }
+
+        const quantity = this.getSaleProductPickerQuantity();
+        if (this.elements.saleProductQty) {
+            this.elements.saleProductQty.value = String(quantity);
+        }
+        this.elements.selectVenda.value = productId;
+        if (this.elements.vendaQty) {
+            this.elements.vendaQty.value = String(quantity);
+        }
+
+        const added = this.addItemVenda();
+        if (!added) {
+            return;
+        }
+
+        this.closeSaleProductPicker({ restoreFocus: false });
+        this.focusSaleSummaryPayment();
+        this.mostrarMsg(`Produto selecionado com quantidade ${quantity}. Indo para resumo e pagamento.`, 'success');
+    }
+
+    focusSaleSummaryPayment() {
+        if (this.elements.posSummaryPanel) {
+            this.elements.posSummaryPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+
+        window.setTimeout(() => {
+            if (this.elements.vendaPagamento) {
+                this.elements.vendaPagamento.focus();
+            }
+        }, 220);
     }
 
     handleGlobalShortcuts(event) {
@@ -1542,14 +2990,14 @@ class App {
         const target = event.target;
         const isTyping = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
 
-        const saleSectionActive = this.isSectionActive('vendas');
+        const saleSectionActive = this.isSectionActive('vendas') || this.isSalesOnlyMode();
 
-        if (event.key === 'F10') {
+        if (event.key === 'F10' || event.code === 'F10' || event.keyCode === 121) {
             if (!saleSectionActive) {
                 return;
             }
             event.preventDefault();
-            this.elements.selectVenda.focus();
+            this.openSaleProductPicker();
             return;
         }
 
@@ -1558,10 +3006,72 @@ class App {
                 return;
             }
             event.preventDefault();
+            const saleProductModalOpen = this.elements.saleProductModal
+                && this.elements.saleProductModal.classList.contains('show');
+            if (saleProductModalOpen && this.elements.saleProductQty) {
+                this.elements.saleProductQty.focus();
+                this.elements.saleProductQty.select();
+                return;
+            }
             if (this.elements.vendaQty) {
                 this.elements.vendaQty.focus();
                 this.elements.vendaQty.select();
             }
+            return;
+        }
+
+        if (event.key === 'F6') {
+            if (!saleSectionActive) {
+                return;
+            }
+            event.preventDefault();
+            this.setSaleFiscalProfile('varejo');
+            return;
+        }
+
+        if (event.key === 'F7') {
+            if (!saleSectionActive) {
+                return;
+            }
+            event.preventDefault();
+            this.setSaleFiscalProfile('atacado', { focusWholesalePrice: true });
+            return;
+        }
+
+        if (
+            event.ctrlKey
+            && !event.shiftKey
+            && !event.altKey
+            && !event.metaKey
+            && event.key.toLowerCase() === 'c'
+        ) {
+            if (!saleSectionActive || !this.isRetailFiscalProfile()) {
+                return;
+            }
+            const selectedText = window.getSelection ? String(window.getSelection() || '').trim() : '';
+            if (isTyping || selectedText) {
+                return;
+            }
+            event.preventDefault();
+            this.showCustomerDocumentField('cpf');
+            return;
+        }
+
+        if (
+            event.ctrlKey
+            && !event.shiftKey
+            && !event.altKey
+            && !event.metaKey
+            && event.key.toLowerCase() === 'm'
+        ) {
+            if (!saleSectionActive || !this.isWholesaleFiscalProfile()) {
+                return;
+            }
+            if (isTyping) {
+                return;
+            }
+            event.preventDefault();
+            this.showCustomerDocumentField('cnpj');
             return;
         }
 
@@ -1574,8 +3084,16 @@ class App {
             return;
         }
 
-        if (event.key === 'F12' || (event.ctrlKey && event.key === 'Enter')) {
-            if (this.isSectionActive('vendas')) {
+        if (event.ctrlKey && event.key === 'Enter') {
+            if (saleSectionActive) {
+                event.preventDefault();
+                this.addItemVenda();
+            }
+            return;
+        }
+
+        if (event.key === 'F12') {
+            if (saleSectionActive) {
                 event.preventDefault();
                 this.finalizarVenda();
             }
@@ -1583,7 +3101,7 @@ class App {
         }
 
         if (event.ctrlKey && event.key === 'Delete') {
-            if (this.isSectionActive('vendas')) {
+            if (saleSectionActive) {
                 event.preventDefault();
                 this.cancelarVenda();
             }
@@ -1599,7 +3117,7 @@ class App {
         }
 
         if (event.key === 'F1') {
-            if (this.isSectionActive('vendas')) {
+            if (saleSectionActive) {
                 event.preventDefault();
                 this.setSalePaymentMethod('dinheiro');
                 if (this.elements.vendaValorRecebido) {
@@ -1610,7 +3128,7 @@ class App {
         }
 
         if (event.key === 'F2') {
-            if (this.isSectionActive('vendas')) {
+            if (saleSectionActive) {
                 event.preventDefault();
                 this.setSalePaymentMethod('debito');
             }
@@ -1618,7 +3136,7 @@ class App {
         }
 
         if (event.key === 'F3') {
-            if (this.isSectionActive('vendas')) {
+            if (saleSectionActive) {
                 event.preventDefault();
                 this.setSalePaymentMethod('credito');
             }
@@ -1629,6 +3147,14 @@ class App {
             if (saleSectionActive) {
                 event.preventDefault();
                 this.setSalePaymentMethod('pix');
+            }
+            return;
+        }
+
+        if (event.key === 'F5') {
+            if (saleSectionActive) {
+                event.preventDefault();
+                this.openScannerModal();
             }
             return;
         }
@@ -1644,7 +3170,22 @@ class App {
                 event.preventDefault();
                 return;
             }
-            if (this.isSectionActive('vendas')) {
+            if (this.elements.saleProductModal && this.elements.saleProductModal.classList.contains('show')) {
+                this.closeSaleProductPicker();
+                event.preventDefault();
+                return;
+            }
+            if (saleSectionActive) {
+                if (this.vendaAtual.length > 0) {
+                    this.cancelarVenda();
+                    event.preventDefault();
+                    return;
+                }
+                if (this.isSalesOnlyMode()) {
+                    event.preventDefault();
+                    this.handleSalesOnlyEscExit();
+                    return;
+                }
                 this.cancelarVenda();
                 event.preventDefault();
             }
@@ -1655,6 +3196,22 @@ class App {
     isSectionActive(sectionId) {
         const section = document.getElementById(sectionId);
         return section ? section.classList.contains('active') : false;
+    }
+
+    isSalesOnlyMode() {
+        return Boolean(document.body?.classList.contains('sales-only'));
+    }
+
+    handleSalesOnlyEscExit() {
+        const now = Date.now();
+        const isSecondEsc = (now - this.salesOnlyEscExitArmedAt) <= this.salesOnlyEscExitWindowMs;
+        if (isSecondEsc) {
+            window.location.href = '/';
+            return;
+        }
+
+        this.salesOnlyEscExitArmedAt = now;
+        this.mostrarMsg('Pressione Esc novamente para sair da pagina de vendas.', 'warning');
     }
 
     setSalePaymentMethod(method, { showFeedback = true } = {}) {
@@ -1810,6 +3367,277 @@ class App {
         });
         this.updateSaleEntryStatus();
     }
+
+    isWholesaleFiscalProfile() {
+        return this.elements.vendaPerfilFiscal?.value === 'atacado';
+    }
+
+    isRetailFiscalProfile() {
+        return this.elements.vendaPerfilFiscal?.value === 'varejo';
+    }
+
+    normalizeCpf(value) {
+        return String(value || '').replace(/\D/g, '').slice(0, 11);
+    }
+
+    formatCpfInput(value) {
+        const digits = this.normalizeCpf(value);
+        if (!digits) {
+            return '';
+        }
+        if (digits.length <= 3) {
+            return digits;
+        }
+        if (digits.length <= 6) {
+            return digits.replace(/(\d{3})(\d+)/, '$1.$2');
+        }
+        if (digits.length <= 9) {
+            return digits.replace(/(\d{3})(\d{3})(\d+)/, '$1.$2.$3');
+        }
+        return digits.replace(/(\d{3})(\d{3})(\d{3})(\d+)/, '$1.$2.$3-$4');
+    }
+
+    isValidCpf(value) {
+        const cpf = this.normalizeCpf(value);
+        if (cpf.length !== 11) {
+            return false;
+        }
+        if (/^(\d)\1{10}$/.test(cpf)) {
+            return false;
+        }
+
+        const calculateDigit = (base, factorStart) => {
+            const total = base
+                .split('')
+                .reduce((sum, digit, index) => sum + (Number(digit) * (factorStart - index)), 0);
+            const remainder = (total * 10) % 11;
+            return remainder === 10 ? 0 : remainder;
+        };
+
+        const baseNine = cpf.slice(0, 9);
+        const digit1 = calculateDigit(baseNine, 10);
+        const digit2 = calculateDigit(`${baseNine}${digit1}`, 11);
+        return cpf === `${baseNine}${digit1}${digit2}`;
+    }
+
+    normalizeCnpj(value) {
+        return String(value || '').replace(/\D/g, '').slice(0, 14);
+    }
+
+    formatCnpjInput(value) {
+        const digits = this.normalizeCnpj(value);
+        if (!digits) {
+            return '';
+        }
+        if (digits.length <= 2) {
+            return digits;
+        }
+        if (digits.length <= 5) {
+            return digits.replace(/(\d{2})(\d+)/, '$1.$2');
+        }
+        if (digits.length <= 8) {
+            return digits.replace(/(\d{2})(\d{3})(\d+)/, '$1.$2.$3');
+        }
+        if (digits.length <= 12) {
+            return digits.replace(/(\d{2})(\d{3})(\d{3})(\d+)/, '$1.$2.$3/$4');
+        }
+        return digits.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d+)/, '$1.$2.$3/$4-$5');
+    }
+
+    isValidCnpj(value) {
+        const cnpj = this.normalizeCnpj(value);
+        if (cnpj.length !== 14) {
+            return false;
+        }
+        if (/^(\d)\1{13}$/.test(cnpj)) {
+            return false;
+        }
+
+        const calculateDigit = (base, factors) => {
+            const total = base
+                .split('')
+                .reduce((sum, digit, index) => sum + (Number(digit) * factors[index]), 0);
+            const remainder = total % 11;
+            return remainder < 2 ? 0 : 11 - remainder;
+        };
+
+        const base12 = cnpj.slice(0, 12);
+        const digit1 = calculateDigit(base12, [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]);
+        const digit2 = calculateDigit(`${base12}${digit1}`, [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]);
+        return cnpj === `${base12}${digit1}${digit2}`;
+    }
+
+    updateCustomerDocumentUi() {
+        const profile = this.elements.vendaPerfilFiscal?.value || 'varejo';
+        const varejo = profile === 'varejo';
+        const atacado = profile === 'atacado';
+
+        if (this.elements.varejoCustomerFields) {
+            if (!varejo) {
+                this.elements.varejoCustomerFields.hidden = true;
+            }
+        }
+        if (this.elements.atacadoCustomerFields) {
+            if (!atacado) {
+                this.elements.atacadoCustomerFields.hidden = true;
+            }
+        }
+    }
+
+    updateWholesaleCustomerUi() {
+        this.updateCustomerDocumentUi();
+    }
+
+    showCustomerDocumentField(type) {
+        const normalizedType = type === 'cnpj' ? 'cnpj' : 'cpf';
+        const profile = this.elements.vendaPerfilFiscal?.value || 'varejo';
+        if (normalizedType === 'cpf' && profile !== 'varejo') {
+            return false;
+        }
+        if (normalizedType === 'cnpj' && profile !== 'atacado') {
+            return false;
+        }
+
+        if (this.elements.varejoCustomerFields) {
+            this.elements.varejoCustomerFields.hidden = normalizedType !== 'cpf';
+        }
+        if (this.elements.atacadoCustomerFields) {
+            this.elements.atacadoCustomerFields.hidden = normalizedType !== 'cnpj';
+        }
+
+        const field = normalizedType === 'cpf' ? this.elements.vendaClienteCpf : this.elements.vendaClienteCnpj;
+        if (!field) {
+            return false;
+        }
+        field.focus();
+        field.select();
+        return true;
+    }
+
+    hideCustomerDocumentFields() {
+        if (this.elements.varejoCustomerFields) {
+            this.elements.varejoCustomerFields.hidden = true;
+        }
+        if (this.elements.atacadoCustomerFields) {
+            this.elements.atacadoCustomerFields.hidden = true;
+        }
+    }
+
+    setSaleFiscalProfile(profile, { focusWholesalePrice = false } = {}) {
+        if (!this.elements.vendaPerfilFiscal) {
+            return;
+        }
+
+        const normalizedProfile = profile === 'atacado' ? 'atacado' : 'varejo';
+        this.elements.vendaPerfilFiscal.value = normalizedProfile;
+        this.handleSaleFiscalProfileChange({ showFeedback: false, focusWholesalePrice });
+        const label = normalizedProfile === 'atacado' ? 'Atacado (NF-e)' : 'Varejo (NFC-e)';
+        this.mostrarMsg(`Perfil fiscal definido: ${label}.`, 'success');
+    }
+
+    getUnitPriceForCurrentFiscalProfile(produto) {
+        if (!produto) {
+            return 0;
+        }
+        return this.isWholesaleFiscalProfile() ? 0 : Number(produto.preco || 0);
+    }
+
+    handleSaleFiscalProfileChange({ showFeedback = true, focusWholesalePrice = false } = {}) {
+        this.updateCustomerDocumentUi();
+
+        if (!this.vendaAtual.length) {
+            this.updateSaleEntryStatus();
+            this.renderItensVenda();
+            if (focusWholesalePrice && this.isWholesaleFiscalProfile()) {
+                this.focusWholesalePriceInput();
+            }
+            return;
+        }
+
+        if (this.isWholesaleFiscalProfile()) {
+            this.vendaAtual = this.vendaAtual.map((item) => ({
+                ...item,
+                precoBase: Number(item.precoBase ?? db.getProduto(item.id)?.preco ?? item.preco ?? 0),
+                preco: 0
+            }));
+            if (showFeedback) {
+                this.mostrarMsg('Perfil atacado ativo: preços dos itens zerados para edição manual.', 'success');
+            }
+        } else {
+            this.vendaAtual = this.vendaAtual.map((item) => {
+                const produto = db.getProduto(item.id);
+                const precoBase = Number(produto?.preco ?? item.precoBase ?? item.preco ?? 0);
+                return {
+                    ...item,
+                    precoBase,
+                    preco: precoBase
+                };
+            });
+            if (showFeedback) {
+                this.mostrarMsg('Perfil fiscal alterado: preços padrão restaurados.', 'success');
+            }
+        }
+
+        this.updateSaleEntryStatus();
+        this.renderItensVenda();
+        if (focusWholesalePrice && this.isWholesaleFiscalProfile()) {
+            this.focusWholesalePriceInput();
+        }
+    }
+
+    focusWholesalePriceInput(index = 0) {
+        window.setTimeout(() => {
+            if (!this.isWholesaleFiscalProfile()) {
+                return;
+            }
+
+            const totalItems = this.vendaAtual.length;
+            if (!totalItems) {
+                if (this.elements.selectVenda) {
+                    this.elements.selectVenda.focus();
+                }
+                return;
+            }
+
+            const safeIndex = Math.max(0, Math.min(index, totalItems - 1));
+            const priceInput = this.elements.tbItens?.querySelector(`[data-item-price-index="${safeIndex}"]`);
+            if (!priceInput) {
+                return;
+            }
+            priceInput.focus();
+            priceInput.select();
+        }, 50);
+    }
+
+    updateSaleItemPrice(index, rawValue) {
+        if (!this.isWholesaleFiscalProfile()) {
+            return;
+        }
+
+        if (!Number.isInteger(index) || index < 0 || index >= this.vendaAtual.length) {
+            return;
+        }
+
+        const parsedValue = Number(String(rawValue || '').replace(',', '.'));
+        const novoPreco = Number.isFinite(parsedValue) && parsedValue >= 0 ? parsedValue : 0;
+        this.vendaAtual[index].preco = novoPreco;
+        this.renderItensVenda();
+        this.updateSaleEntryStatus(`Preço do item "${this.vendaAtual[index].nome}" atualizado para ${this.formatMoney(novoPreco)}.`);
+    }
+
+    confirmSaleItemPriceByEnter(index, rawValue) {
+        if (!this.isWholesaleFiscalProfile()) {
+            return;
+        }
+        if (!Number.isInteger(index) || index < 0 || index >= this.vendaAtual.length) {
+            return;
+        }
+
+        this.updateSaleItemPrice(index, rawValue);
+        const nextIndex = Math.min(index + 1, this.vendaAtual.length - 1);
+        this.focusWholesalePriceInput(nextIndex);
+    }
+
     addItemVenda() {
         const produtoId = this.elements.selectVenda.value;
         const quantidade = Number(document.getElementById('venda-qty').value);
@@ -1822,8 +3650,8 @@ class App {
 
         const produto = db.getProduto(produtoId);
         if (!produto) {
-            this.mostrarMsg('Produto nao encontrado.', 'warning');
-            this.updateSaleEntryStatus('Produto nao encontrado. Revise o cadastro antes de vender.');
+            this.mostrarMsg('Produto não encontrado.', 'warning');
+            this.updateSaleEntryStatus('Produto não encontrado. Revise o cadastro antes de vender.');
             return false;
         }
 
@@ -1839,11 +3667,13 @@ class App {
         if (itemExistente) {
             itemExistente.qtd += quantidade;
         } else {
+            const precoBase = Number(produto.preco || 0);
             this.vendaAtual.push({
                 id: produto.id,
                 nome: produto.nome,
                 qtd: quantidade,
-                preco: produto.preco
+                precoBase,
+                preco: this.getUnitPriceForCurrentFiscalProfile(produto)
             });
         }
 
@@ -1856,6 +3686,7 @@ class App {
 
     renderItensVenda() {
         const total = this.getSaleTotal();
+        const atacadoAtivo = this.isWholesaleFiscalProfile();
 
         if (!this.vendaAtual.length) {
             this.elements.tbItens.innerHTML = '<tr><td colspan="5" class="empty">Nenhum item</td></tr>';
@@ -1863,17 +3694,30 @@ class App {
             this.updateSaleKpis(0);
             this.updateChangePreview();
             this.updatePixPreview();
+            this.scheduleSalesStaticFit();
             return;
         }
 
         this.elements.tbItens.innerHTML = this.vendaAtual.map((item, index) => {
             const subtotal = item.preco * item.qtd;
+            const precoUnitario = atacadoAtivo
+                ? `
+                    <input
+                        type="number"
+                        class="sale-item-price-input"
+                        data-item-price-index="${index}"
+                        min="0"
+                        step="0.01"
+                        value="${Number(item.preco || 0).toFixed(2)}"
+                    >
+                `
+                : this.formatMoney(item.preco);
 
             return `
                 <tr>
                     <td>${item.nome}</td>
                     <td>${item.qtd}</td>
-                    <td>${this.formatMoney(item.preco)}</td>
+                    <td>${precoUnitario}</td>
                     <td>${this.formatMoney(subtotal)}</td>
                     <td><button class="btn btn-danger btn-small" data-remove-item="${index}">Remover</button></td>
                 </tr>
@@ -1884,10 +3728,141 @@ class App {
         this.updateSaleKpis(total);
         this.updateChangePreview();
         this.updatePixPreview();
+        this.scheduleSalesStaticFit();
     }
 
     getSaleTotal() {
         return this.vendaAtual.reduce((soma, item) => soma + (item.qtd * item.preco), 0);
+    }
+
+    buildAtacadoNfePayload(venda, nota) {
+        const config = db.getConfig ? db.getConfig() : {};
+        const cidadePadrao = (config.pixCidade || 'CAMPO GRANDE').trim().toUpperCase();
+        const customerDoc = String(venda?.cliente?.documento || '').trim();
+        const customerName = String(venda?.cliente?.nome || '').trim() || 'CONSUMIDOR FINAL';
+        const customerEmail = String(config.email || '').trim();
+        const customerCity = cidadePadrao;
+
+        const items = (venda?.itens || []).map((item) => {
+            const produto = db.getProduto(item.id);
+            const ncmDigits = String(produto?.ncm || '').replace(/\D/g, '').slice(0, 8);
+            const ncm = ncmDigits.padStart(8, '0');
+            return {
+                code: String(produto?.codigo || item.id || ''),
+                description: String(item.nome || produto?.nome || 'Produto'),
+                ncm: ncm || '00000000',
+                cfop: '5102',
+                unit: 'UN',
+                quantity: Number(item.qtd || 0),
+                unitPrice: Number(item.preco || 0),
+                barcode: String(produto?.codigoBarras || produto?.codigo || ''),
+                taxes: {
+                    icmsRate: 18,
+                    pisRate: 1.65,
+                    cofinsRate: 7.6
+                }
+            };
+        });
+
+        return {
+            saleId: venda.id,
+            invoiceNumber: nota.numero,
+            serie: nota.serie || 1,
+            issueDate: venda.data || new Date().toISOString(),
+            paymentMethod: venda.pagamento || 'dinheiro',
+            customer: {
+                name: customerName,
+                document: customerDoc,
+                email: customerEmail,
+                city: customerCity,
+                uf: 'MS',
+                address: {
+                    street: 'NÃO INFORMADO',
+                    number: 'S/N',
+                    neighborhood: 'CENTRO',
+                    city: customerCity,
+                    cityCode: '5002704',
+                    uf: 'MS',
+                    cep: '79000000'
+                }
+            },
+            items,
+            additionalInfo: `NF-e emitida automaticamente pela finalização da venda ${venda.id}.`
+        };
+    }
+
+    getNfeEmissionEndpoints(baseApi) {
+        const relativePath = '/api/v1/fiscal/nfe/emitir';
+        const candidateSet = new Set();
+        const addCandidate = (value) => {
+            if (!value) {
+                return;
+            }
+            candidateSet.add(String(value).replace(/\/+$/, ''));
+        };
+
+        const base = String(baseApi || '').trim().replace(/\/+$/, '');
+        if (base) {
+            addCandidate(`${base}${relativePath}`);
+            const withoutApiSuffix = base.replace(/\/api(?:\/v1)?$/i, '');
+            if (withoutApiSuffix && withoutApiSuffix !== base) {
+                addCandidate(`${withoutApiSuffix}${relativePath}`);
+            }
+        }
+
+        addCandidate(`${String(window.location.origin || '').replace(/\/+$/, '')}${relativePath}`);
+        addCandidate(relativePath);
+        return Array.from(candidateSet);
+    }
+
+    async emitirNfeAtacado(venda, nota) {
+        const baseApi = typeof db.getApiBaseUrl === 'function'
+            ? db.getApiBaseUrl()
+            : window.location.origin;
+        const endpoints = this.getNfeEmissionEndpoints(baseApi);
+        const payload = this.buildAtacadoNfePayload(venda, nota);
+        let lastError = null;
+
+        for (const endpoint of endpoints) {
+            try {
+                const response = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(payload)
+                });
+
+                const raw = await response.text();
+                let parsed = null;
+                try {
+                    parsed = raw ? JSON.parse(raw) : null;
+                } catch (_error) {
+                    parsed = null;
+                }
+
+                if (!response.ok) {
+                    const reason = parsed?.error || parsed?.xMotivo || parsed?.message || raw || `HTTP ${response.status}`;
+                    const shouldTryNext = (response.status === 404 || response.status === 405) && endpoint !== endpoints[endpoints.length - 1];
+                    if (shouldTryNext) {
+                        lastError = reason;
+                        continue;
+                    }
+                    return { ok: false, reason, data: parsed, status: response.status, endpoint };
+                }
+
+                const authorized = parsed?.status === 'AUTORIZADA';
+                const reason = parsed?.xMotivo || (authorized ? 'Autorizada.' : 'Sem motivo informado.');
+                return { ok: authorized, reason, data: parsed, status: response.status, endpoint };
+            } catch (error) {
+                lastError = error?.message || 'Falha de comunicação com o módulo fiscal.';
+            }
+        }
+
+        return {
+            ok: false,
+            reason: lastError || 'Falha de comunicação com o módulo fiscal.'
+        };
     }
 
     updateSaleEntryStatus(message = '') {
@@ -1902,7 +3877,7 @@ class App {
 
         const produtoId = this.elements.selectVenda.value;
         if (!produtoId) {
-            this.elements.saleAddStatus.textContent = 'Caixa pronto para leitura. Se preferir, use o leitor para incluir produtos rapidamente.';
+            this.elements.saleAddStatus.textContent = '';
             return;
         }
 
@@ -1913,7 +3888,10 @@ class App {
         }
 
         const disponibilidade = produto.estoque > 0 ? `${produto.estoque} em estoque` : 'sem estoque';
-        this.elements.saleAddStatus.textContent = `Selecionado: ${produto.nome} | ${this.formatMoney(produto.preco)} | ${disponibilidade}.`;
+        const precoPerfil = this.isWholesaleFiscalProfile()
+            ? `${this.formatMoney(0)} (editável no atacado)`
+            : this.formatMoney(produto.preco);
+        this.elements.saleAddStatus.textContent = `Selecionado: ${produto.nome} | ${precoPerfil} | ${disponibilidade}.`;
     }
 
     updateSaleKpis(total) {
@@ -1963,6 +3941,9 @@ class App {
         try {
             const total = this.getSaleTotal();
             const pagamento = this.elements.vendaPagamento.value;
+            const perfilFiscal = this.elements.vendaPerfilFiscal ? this.elements.vendaPerfilFiscal.value : 'varejo';
+            const clienteCpf = this.normalizeCpf(this.elements.vendaClienteCpf?.value);
+            const clienteCnpj = this.normalizeCnpj(this.elements.vendaClienteCnpj?.value);
             const valorRecebido = Number(this.elements.vendaValorRecebido.value || 0);
             const troco = Math.max(0, valorRecebido - total);
             const config = db.getConfig();
@@ -1970,9 +3951,35 @@ class App {
                 ? (config.maquininhas || []).find((item) => item.id === this.elements.vendaMaquininha.value)
                 : null;
 
-            if ((pagamento === 'debito' || pagamento === 'credito') && !maquininha) {
-                this.mostrarMsg('Selecione uma maquininha para pagamentos com cartao.', 'warning');
+            if (perfilFiscal === 'atacado' && clienteCnpj && !this.isValidCnpj(clienteCnpj)) {
+                this.mostrarMsg('O CNPJ informado para atacado é inválido. Revise os dados do cliente.', 'warning');
+                this.showCustomerDocumentField('cnpj');
                 return;
+            }
+
+            if (perfilFiscal === 'varejo' && clienteCpf && !this.isValidCpf(clienteCpf)) {
+                this.mostrarMsg('O CPF informado para varejo é inválido. Revise os dados do cliente.', 'warning');
+                this.showCustomerDocumentField('cpf');
+                return;
+            }
+
+            const clienteDocumento = perfilFiscal === 'atacado'
+                ? clienteCnpj
+                : perfilFiscal === 'varejo'
+                    ? clienteCpf
+                    : '';
+
+            if ((pagamento === 'debito' || pagamento === 'credito') && !maquininha) {
+                this.mostrarMsg('Selecione uma maquininha para pagamentos com cartão.', 'warning');
+                return;
+            }
+            if ((pagamento === 'debito' || pagamento === 'credito') && maquininha) {
+                const statusMaquininha = String(maquininha.status || '').toLowerCase();
+                const conectada = statusMaquininha === 'conectada' || statusMaquininha === 'pareada';
+                if (!conectada) {
+                    this.mostrarMsg('Conecte a maquininha na aba Configurações antes de finalizar pagamento com cartão.', 'warning');
+                    return;
+                }
             }
 
             if (pagamento === 'dinheiro' && valorRecebido < total) {
@@ -1983,13 +3990,11 @@ class App {
             let pix = null;
             if (pagamento === 'pix') {
                 if (!config.pixChave) {
-                    this.mostrarMsg('Cadastre a chave PIX da loja nas configuracoes.', 'warning');
+                    this.mostrarMsg('Cadastre a chave PIX da loja nas configurações.', 'warning');
                     return;
                 }
                 pix = this.buildPixPayment(config, total);
             }
-
-            const perfilFiscal = this.elements.vendaPerfilFiscal ? this.elements.vendaPerfilFiscal.value : 'varejo';
             const notaWindow = window.open('', 'NotaFiscal');
             if (!notaWindow) {
                 this.mostrarMsg('Permita popups para imprimir a nota fiscal.', 'warning');
@@ -2005,9 +4010,50 @@ class App {
                 maquininhaNome: maquininha ? maquininha.nome : '',
                 pix,
                 perfilFiscal,
+                cliente: {
+                    documento: clienteDocumento
+                }
             });
 
             this.mostrarMsg(`Venda registrada com sucesso. ${nota.tipo} nº ${nota.numero} gerada.`, 'success');
+
+            if (perfilFiscal === 'atacado') {
+                const emissaoNfe = await this.emitirNfeAtacado(venda, nota);
+                const chaveAcesso = String(emissaoNfe.data?.accessKey || '').trim();
+                const urlConsultaSefaz = chaveAcesso
+                    ? `https://www.nfe.fazenda.gov.br/portal/consultaRecaptcha.aspx?chNFe=${encodeURIComponent(chaveAcesso)}`
+                    : '';
+
+                if (emissaoNfe.ok) {
+                    const metadata = {
+                        chaveAcesso,
+                        protocoloAutorizacao: String(emissaoNfe.data?.nProt || '').trim(),
+                        dataRecebimentoSefaz: emissaoNfe.data?.dhRecbto || null,
+                        reciboSefaz: String(emissaoNfe.data?.nRec || '').trim(),
+                        motivoSefaz: String(emissaoNfe.data?.xMotivo || emissaoNfe.reason || '').trim(),
+                        codigoStatusSefaz: String(emissaoNfe.data?.cStat || '').trim(),
+                        urlConsultaSefaz
+                    };
+                    await db.updateNotaStatus(nota.id, 'autorizada', metadata);
+                    Object.assign(nota, metadata, { status: 'autorizada' });
+                    const protocolo = emissaoNfe.data?.nProt ? ` Protocolo: ${emissaoNfe.data.nProt}.` : '';
+                    this.mostrarMsg(`NF-e autorizada com sucesso.${protocolo}`, 'success');
+                } else {
+                    const metadata = {
+                        chaveAcesso,
+                        protocoloAutorizacao: String(emissaoNfe.data?.nProt || '').trim(),
+                        dataRecebimentoSefaz: emissaoNfe.data?.dhRecbto || null,
+                        reciboSefaz: String(emissaoNfe.data?.nRec || '').trim(),
+                        motivoSefaz: String(emissaoNfe.data?.xMotivo || emissaoNfe.reason || '').trim(),
+                        codigoStatusSefaz: String(emissaoNfe.data?.cStat || '').trim(),
+                        urlConsultaSefaz
+                    };
+                    await db.updateNotaStatus(nota.id, 'rejeitada', metadata);
+                    Object.assign(nota, metadata, { status: 'rejeitada' });
+                    this.mostrarMsg(`NF-e não autorizada: ${emissaoNfe.reason}`, 'warning');
+                }
+            }
+
             this.showFiscalNotePrintout(nota, notaWindow);
             this.cancelarVenda({ fromFinalize: true });
             this.refreshDataViews();
@@ -2022,32 +4068,20 @@ class App {
         if (this.elements.vendaPerfilFiscal) {
             this.elements.vendaPerfilFiscal.value = 'varejo';
         }
+        if (this.elements.vendaClienteCnpj) {
+            this.elements.vendaClienteCnpj.value = '';
+        }
+        if (this.elements.vendaClienteCpf) {
+            this.elements.vendaClienteCpf.value = '';
+        }
+        this.hideCustomerDocumentFields();
         this.elements.vendaValorRecebido.value = '';
         this.elements.vendaMaquininha.value = '';
         this.renderItensVenda();
         this.updateSaleEntryStatus(fromFinalize
-            ? 'Venda concluida. Caixa pronto para iniciar uma nova compra.'
-            : 'Venda cancelada. Caixa pronto para iniciar uma nova compra.');
+            ? 'Venda concluída. Pronto para nova compra.'
+            : 'Venda cancelada. Pronto para nova compra.');
         this.updatePaymentUI();
-    }
-
-    renderVendas() {
-        const vendas = db.getVendas().slice(0, 10);
-
-        if (!vendas.length) {
-            this.elements.tbVendas.innerHTML = '<tr><td colspan="5" class="empty">Nenhuma venda registrada</td></tr>';
-            return;
-        }
-
-        this.elements.tbVendas.innerHTML = vendas.map((venda) => `
-            <tr>
-                <td>${this.formatDate(venda.data)}</td>
-                <td>${venda.itens.length}</td>
-                <td>${this.formatMoney(venda.total)}</td>
-                <td>${this.getVendaPagamentoLabel(venda)}</td>
-                <td>${this.getVendaDetalhes(venda)}</td>
-            </tr>
-        `).join('');
     }
 
     renderSelectMov() {
@@ -2266,13 +4300,48 @@ class App {
     carregarConfig() {
         const config = db.getConfig();
 
-        document.getElementById('cfg-nome').value = config.nomeLoja || '';
-        document.getElementById('cfg-cnpj').value = config.cnpj || '';
-        document.getElementById('cfg-email').value = config.email || '';
+        if (this.elements.cfgNome) {
+            this.elements.cfgNome.value = config.nomeLoja || '';
+        }
+        if (this.elements.cfgCnpj) {
+            this.elements.cfgCnpj.value = config.cnpj || '';
+        }
+        if (this.elements.cfgInscricaoEstadual) {
+            this.elements.cfgInscricaoEstadual.value = config.inscricaoEstadual || '';
+        }
+        if (this.elements.cfgEnderecoRua) {
+            this.elements.cfgEnderecoRua.value = config.enderecoRua || '';
+        }
+        if (this.elements.cfgEnderecoNumero) {
+            this.elements.cfgEnderecoNumero.value = config.enderecoNumero || '';
+        }
+        if (this.elements.cfgEnderecoBairro) {
+            this.elements.cfgEnderecoBairro.value = config.enderecoBairro || '';
+        }
+        if (this.elements.cfgEnderecoUf) {
+            this.elements.cfgEnderecoUf.value = config.enderecoUf || '';
+        }
+        if (this.elements.cfgEnderecoCep) {
+            this.elements.cfgEnderecoCep.value = config.enderecoCep || '';
+        }
+        if (this.elements.cfgEmail) {
+            this.elements.cfgEmail.value = config.email || '';
+        }
         this.elements.cfgPixChave.value = config.pixChave || '';
         this.elements.cfgPixCidade.value = config.pixCidade || '';
-        if (this.elements.cfgFiscalPrinterProfile) {
-            this.elements.cfgFiscalPrinterProfile.value = this.normalizeFiscalPrinterProfile(config.fiscalPrinterProfile);
+        if (this.elements.cfgFiscalPrinterProfileNfe) {
+            this.elements.cfgFiscalPrinterProfileNfe.value = this.normalizeNfePrinterProfile(config.fiscalPrinterProfileNfe);
+        }
+        if (this.elements.cfgFiscalPrinterNameNfe) {
+            this.elements.cfgFiscalPrinterNameNfe.value = config.fiscalPrinterNameNfe || '';
+        }
+        if (this.elements.cfgFiscalPrinterProfileNfce) {
+            this.elements.cfgFiscalPrinterProfileNfce.value = this.normalizeNfcePrinterProfile(
+                config.fiscalPrinterProfileNfce || config.fiscalPrinterProfile
+            );
+        }
+        if (this.elements.cfgFiscalPrinterNameNfce) {
+            this.elements.cfgFiscalPrinterNameNfce.value = config.fiscalPrinterNameNfce || '';
         }
         this.renderMaquininhas();
         this.updatePaymentUI();
@@ -2280,16 +4349,35 @@ class App {
 
     async salvarConfig() {
         try {
+            const nomeLoja = this.elements.cfgNome?.value?.trim() || '';
+            const cnpj = this.elements.cfgCnpj?.value?.trim() || '';
+            const inscricaoEstadual = this.elements.cfgInscricaoEstadual?.value?.trim() || '';
+            const enderecoRua = this.elements.cfgEnderecoRua?.value?.trim() || '';
+            const enderecoNumero = this.elements.cfgEnderecoNumero?.value?.trim() || '';
+            const enderecoBairro = this.elements.cfgEnderecoBairro?.value?.trim() || '';
+            const enderecoUf = (this.elements.cfgEnderecoUf?.value || '').trim().toUpperCase().slice(0, 2);
+            const enderecoCep = this.elements.cfgEnderecoCep?.value?.trim() || '';
+            const email = this.elements.cfgEmail?.value?.trim() || '';
+
             await db.setConfig({
-                nomeLoja: document.getElementById('cfg-nome').value,
-                cnpj: document.getElementById('cfg-cnpj').value,
-                email: document.getElementById('cfg-email').value,
+                nomeLoja,
+                cnpj,
+                inscricaoEstadual,
+                enderecoRua,
+                enderecoNumero,
+                enderecoBairro,
+                enderecoUf,
+                enderecoCep,
+                email,
                 pixChave: this.elements.cfgPixChave.value,
                 pixCidade: this.elements.cfgPixCidade.value,
-                fiscalPrinterProfile: this.normalizeFiscalPrinterProfile(this.elements.cfgFiscalPrinterProfile?.value),
+                fiscalPrinterProfileNfe: this.normalizeNfePrinterProfile(this.elements.cfgFiscalPrinterProfileNfe?.value),
+                fiscalPrinterNameNfe: String(this.elements.cfgFiscalPrinterNameNfe?.value || '').trim(),
+                fiscalPrinterProfileNfce: this.normalizeNfcePrinterProfile(this.elements.cfgFiscalPrinterProfileNfce?.value),
+                fiscalPrinterNameNfce: String(this.elements.cfgFiscalPrinterNameNfce?.value || '').trim(),
                 maquininhas: db.getConfig().maquininhas || []
             });
-            this.mostrarMsg('Informacoes da loja salvas.');
+            this.mostrarMsg('Informações da loja salvas.');
             this.renderMaquininhas();
             this.updatePaymentUI();
             this.renderCloudStatus();
@@ -2298,33 +4386,221 @@ class App {
         }
     }
 
+    normalizeMaquininhaConexao(value) {
+        const normalized = String(value || '').trim().toLowerCase();
+        const allowed = ['manual', 'bluetooth', 'wifi', 'usb', 'serial', 'api', 'outro'];
+        return allowed.includes(normalized) ? normalized : 'manual';
+    }
+
+    getMaquininhaConexaoLabel(value) {
+        const labels = {
+            manual: 'Manual',
+            bluetooth: 'Bluetooth',
+            wifi: 'Wi-Fi',
+            usb: 'USB',
+            serial: 'Serial',
+            api: 'API/TEF',
+            outro: 'Outro'
+        };
+        return labels[this.normalizeMaquininhaConexao(value)] || this.capitalize(String(value || 'manual'));
+    }
+
+    getMaquininhaStatusLabel(status) {
+        const normalized = String(status || 'disponivel').trim().toLowerCase();
+        const labels = {
+            disponivel: 'Disponível',
+            conectada: 'Conectada',
+            pareada: 'Pareada',
+            erro: 'Erro'
+        };
+        return labels[normalized] || this.capitalize(normalized);
+    }
+
     async cadastrarMaquininha() {
         const config = db.getConfig();
+        const provider = String(this.elements.cfgMaqProvider?.value || '').trim();
         const nome = this.elements.cfgMaqNome.value.trim();
         const modelo = this.elements.cfgMaqModelo.value.trim();
-        const conexao = this.elements.cfgMaqConexao.value;
+        const conexao = this.normalizeMaquininhaConexao(this.elements.cfgMaqConexao.value);
+        const identificador = String(this.elements.cfgMaqIdentificador?.value || '').trim();
+        const endpoint = String(this.elements.cfgMaqEndpoint?.value || '').trim();
 
-        if (!nome || !modelo) {
-            this.mostrarMsg('Informe nome e modelo da maquininha.', 'warning');
+        if (!nome) {
+            this.mostrarMsg('Informe pelo menos o nome exibido da maquininha.', 'warning');
             return;
         }
 
         const maquininhas = [...(config.maquininhas || []), {
             id: `maq_${Date.now()}`,
+            provider,
             nome,
             modelo,
             conexao,
+            identificador,
+            endpoint,
             status: 'disponivel',
+            connectedAt: null,
+            connectedDetails: '',
+            lastError: '',
             pareadoEm: null
         }];
 
         await db.setConfig({ maquininhas });
+        if (this.elements.cfgMaqProvider) {
+            this.elements.cfgMaqProvider.value = '';
+        }
         this.elements.cfgMaqNome.value = '';
         this.elements.cfgMaqModelo.value = '';
-        this.elements.cfgMaqConexao.value = 'bluetooth';
+        this.elements.cfgMaqConexao.value = 'manual';
+        if (this.elements.cfgMaqIdentificador) {
+            this.elements.cfgMaqIdentificador.value = '';
+        }
+        if (this.elements.cfgMaqEndpoint) {
+            this.elements.cfgMaqEndpoint.value = '';
+        }
         this.renderMaquininhas();
         this.updatePaymentUI();
-        this.mostrarMsg('Maquininha cadastrada.');
+        this.mostrarMsg('Maquininha cadastrada com suporte genérico.');
+    }
+
+    async conectarMaquininhaSelecionada() {
+        const config = db.getConfig();
+        const alvo = this.elements.vendaMaquininha.value || config.maquininhas?.[0]?.id;
+        if (!alvo) {
+            this.mostrarMsg('Cadastre uma maquininha antes de conectar.', 'warning');
+            return;
+        }
+        await this.conectarMaquininha(alvo);
+    }
+
+    async conectarMaquininha(id) {
+        const config = db.getConfig();
+        const alvo = (config.maquininhas || []).find((maquininha) => maquininha.id === id);
+        if (!alvo) {
+            this.mostrarMsg('Maquininha não encontrada para conexão.', 'warning');
+            return;
+        }
+
+        const resultado = await this.testarConexaoMaquininha(alvo);
+        const connectedAt = resultado.ok ? new Date().toISOString() : alvo.connectedAt || null;
+        const connectedDetails = resultado.ok ? (resultado.details || '') : alvo.connectedDetails || '';
+        const lastError = resultado.ok ? '' : String(resultado.message || '').trim();
+        const maquininhas = (config.maquininhas || []).map((maquininha) => {
+            if (maquininha.id !== id) {
+                return maquininha;
+            }
+            const statusAtual = String(maquininha.status || '').toLowerCase();
+            const status = resultado.ok
+                ? (statusAtual === 'pareada' ? 'pareada' : 'conectada')
+                : 'erro';
+            return {
+                ...maquininha,
+                status,
+                connectedAt,
+                connectedDetails,
+                lastError
+            };
+        });
+
+        await db.setConfig({ maquininhas });
+        this.renderMaquininhas();
+        this.updatePaymentUI();
+        this.mostrarMsg(resultado.message, resultado.ok ? 'success' : 'warning');
+    }
+
+    async testarConexaoMaquininha(maquininha) {
+        const conexao = this.normalizeMaquininhaConexao(maquininha?.conexao);
+        const nome = maquininha?.nome || 'Maquininha';
+
+        try {
+            if (conexao === 'manual' || conexao === 'outro') {
+                return {
+                    ok: true,
+                    message: `Conexão manual registrada para ${nome}.`,
+                    details: 'Conexão manual (suporte genérico).'
+                };
+            }
+
+            if (conexao === 'api' || conexao === 'wifi') {
+                const endpoint = String(maquininha?.endpoint || '').trim();
+                if (!endpoint) {
+                    return {
+                        ok: true,
+                        message: `Conexão registrada para ${nome}. Informe endpoint para validação online quando disponível.`,
+                        details: 'Sem endpoint informado.'
+                    };
+                }
+                try {
+                    await fetch(endpoint, { method: 'GET', mode: 'no-cors' });
+                    return {
+                        ok: true,
+                        message: `Conexão por ${this.getMaquininhaConexaoLabel(conexao)} iniciada para ${nome}.`,
+                        details: `Endpoint configurado: ${endpoint}`
+                    };
+                } catch (error) {
+                    return {
+                        ok: false,
+                        message: `Falha ao testar endpoint da maquininha: ${error.message || 'erro de rede'}.`
+                    };
+                }
+            }
+
+            if (conexao === 'bluetooth') {
+                if (!('bluetooth' in navigator)) {
+                    return { ok: false, message: 'Este navegador não suporta Web Bluetooth para conectar a maquininha.' };
+                }
+                if (!window.isSecureContext) {
+                    return { ok: false, message: 'Conexão Bluetooth exige HTTPS ou localhost.' };
+                }
+                const device = await navigator.bluetooth.requestDevice({ acceptAllDevices: true });
+                return {
+                    ok: true,
+                    message: `Bluetooth conectado: ${device.name || device.id || nome}.`,
+                    details: device.name || device.id || 'Dispositivo Bluetooth conectado.'
+                };
+            }
+
+            if (conexao === 'usb') {
+                if (!('usb' in navigator)) {
+                    return { ok: false, message: 'Este navegador não suporta WebUSB para conectar a maquininha.' };
+                }
+                if (!window.isSecureContext) {
+                    return { ok: false, message: 'Conexão USB exige HTTPS ou localhost.' };
+                }
+                const device = await navigator.usb.requestDevice({ filters: [] });
+                return {
+                    ok: true,
+                    message: `USB conectado: ${device.productName || nome}.`,
+                    details: device.productName || 'Dispositivo USB conectado.'
+                };
+            }
+
+            if (conexao === 'serial') {
+                if (!('serial' in navigator)) {
+                    return { ok: false, message: 'Este navegador não suporta Web Serial para conectar a maquininha.' };
+                }
+                if (!window.isSecureContext) {
+                    return { ok: false, message: 'Conexão Serial exige HTTPS ou localhost.' };
+                }
+                await navigator.serial.requestPort();
+                return {
+                    ok: true,
+                    message: `Porta serial conectada para ${nome}.`,
+                    details: 'Porta serial autorizada no navegador.'
+                };
+            }
+
+            return {
+                ok: true,
+                message: `Conexão registrada para ${nome}.`,
+                details: `Modo ${this.getMaquininhaConexaoLabel(conexao)}.`
+            };
+        } catch (error) {
+            return {
+                ok: false,
+                message: `Conexão cancelada ou falhou: ${error.message || 'erro desconhecido'}.`
+            };
+        }
     }
 
     async parearMaquininhaSelecionada() {
@@ -2339,11 +4615,27 @@ class App {
 
     async parearMaquininha(id) {
         const config = db.getConfig();
-        const maquininhas = (config.maquininhas || []).map((maquininha) => ({
-            ...maquininha,
-            status: maquininha.id === id ? 'pareada' : (maquininha.status || 'disponivel'),
-            pareadoEm: maquininha.id === id ? new Date().toISOString() : maquininha.pareadoEm || null
-        }));
+        const now = new Date().toISOString();
+        const maquininhas = (config.maquininhas || []).map((maquininha) => {
+            if (maquininha.id === id) {
+                const statusAtual = String(maquininha.status || '').toLowerCase();
+                return {
+                    ...maquininha,
+                    status: 'pareada',
+                    connectedAt: maquininha.connectedAt || (statusAtual === 'disponivel' ? now : maquininha.connectedAt || now),
+                    pareadoEm: now,
+                    lastError: ''
+                };
+            }
+
+            if (String(maquininha.status || '').toLowerCase() === 'pareada') {
+                return {
+                    ...maquininha,
+                    status: maquininha.connectedAt ? 'conectada' : 'disponivel'
+                };
+            }
+            return maquininha;
+        });
 
         await db.setConfig({ maquininhas });
         this.renderMaquininhas();
@@ -2372,46 +4664,65 @@ class App {
         maquininhas.forEach((maquininha) => {
             const option = document.createElement('option');
             option.value = maquininha.id;
-            option.textContent = `${maquininha.nome} | ${maquininha.modelo} | ${this.capitalize(maquininha.conexao)}`;
+            const provider = maquininha.provider ? `${maquininha.provider} | ` : '';
+            const modelo = maquininha.modelo || 'Modelo livre';
+            option.textContent = `${provider}${maquininha.nome} | ${modelo} | ${this.getMaquininhaConexaoLabel(maquininha.conexao)}`;
             this.elements.vendaMaquininha.appendChild(option);
         });
         this.elements.vendaMaquininha.value = maquininhas.some((item) => item.id === selecionadaAtual) ? selecionadaAtual : '';
 
         if (!maquininhas.length) {
-            this.elements.tbMaquininhas.innerHTML = '<tr><td colspan="5" class="empty">Nenhuma maquininha cadastrada</td></tr>';
-            this.elements.maquininhaStatusVenda.textContent = 'Cadastre e pareie uma maquininha na aba Configurações.';
+            this.elements.tbMaquininhas.innerHTML = '<tr><td colspan="7" class="empty">Nenhuma maquininha cadastrada</td></tr>';
+            this.elements.maquininhaStatusVenda.textContent = 'Cadastre, conecte e pareie uma maquininha na aba Configurações.';
             return;
         }
 
-        this.elements.tbMaquininhas.innerHTML = maquininhas.map((maquininha) => `
-            <tr>
-                <td>${maquininha.nome}</td>
-                <td>${maquininha.modelo}</td>
-                <td>${this.capitalize(maquininha.conexao)}</td>
-                <td><span class="stock-pill ${maquininha.status === 'pareada' ? 'ok' : 'danger'}">${this.capitalize(maquininha.status)}</span></td>
-                <td>
-                    <div class="action-row nowrap">
-                        <button class="btn btn-secondary btn-small" data-maq-action="parear" data-id="${maquininha.id}">Parear</button>
-                        <button class="btn btn-danger btn-small" data-maq-action="remover" data-id="${maquininha.id}">Remover</button>
-                    </div>
-                </td>
-            </tr>
-        `).join('');
+        this.elements.tbMaquininhas.innerHTML = maquininhas.map((maquininha) => {
+            const normalizedStatus = String(maquininha.status || 'disponivel').toLowerCase();
+            const statusClass = normalizedStatus === 'pareada' || normalizedStatus === 'conectada'
+                ? 'ok'
+                : normalizedStatus === 'erro'
+                    ? 'danger'
+                    : '';
+            const conectadoEm = maquininha.connectedAt ? this.formatDate(maquininha.connectedAt) : '-';
+            const provider = maquininha.provider || '-';
+            const modelo = maquininha.modelo || '-';
+            const tooltip = maquininha.lastError ? ` title="${this.escapeHtml(maquininha.lastError)}"` : '';
+            return `
+                <tr>
+                    <td>${this.escapeHtml(provider)}</td>
+                    <td>${this.escapeHtml(maquininha.nome || '-')}</td>
+                    <td>${this.escapeHtml(modelo)}</td>
+                    <td>${this.escapeHtml(this.getMaquininhaConexaoLabel(maquininha.conexao))}</td>
+                    <td><span class="stock-pill ${statusClass}"${tooltip}>${this.escapeHtml(this.getMaquininhaStatusLabel(maquininha.status))}</span></td>
+                    <td>${this.escapeHtml(conectadoEm)}</td>
+                    <td>
+                        <div class="action-row nowrap">
+                            <button class="btn btn-secondary btn-small" data-maq-action="conectar" data-id="${maquininha.id}">Conectar</button>
+                            <button class="btn btn-secondary btn-small" data-maq-action="parear" data-id="${maquininha.id}">Parear</button>
+                            <button class="btn btn-danger btn-small" data-maq-action="remover" data-id="${maquininha.id}">Remover</button>
+                        </div>
+                    </td>
+                </tr>
+            `;
+        }).join('');
 
         const pareada = maquininhas.find((maquininha) => maquininha.status === 'pareada');
-        this.elements.maquininhaStatusVenda.textContent = pareada
-            ? `Maquininha pronta para uso: ${pareada.nome} (${pareada.modelo}).`
-            : 'Existe maquininha cadastrada, mas nenhuma esta marcada como pareada.';
+        const conectada = pareada || maquininhas.find((maquininha) => maquininha.status === 'conectada');
+        this.elements.maquininhaStatusVenda.textContent = conectada
+            ? `Maquininha pronta para uso: ${conectada.nome} (${conectada.modelo || 'modelo livre'}).`
+            : 'Existe maquininha cadastrada, mas nenhuma foi conectada.';
     }
-
     updatePaymentUI() {
         const pagamento = this.elements.vendaPagamento.value;
         this.elements.moneyFields.hidden = pagamento !== 'dinheiro';
         this.elements.cardFields.hidden = !['debito', 'credito'].includes(pagamento);
         this.elements.pixFields.hidden = pagamento !== 'pix';
+        this.updateCustomerDocumentUi();
         this.updateQuickPayButtons(pagamento);
         this.updateChangePreview();
         this.updatePixPreview();
+        this.scheduleSalesStaticFit();
     }
 
     updateQuickPayButtons(pagamento) {
@@ -2540,8 +4851,8 @@ class App {
     getVendaPagamentoLabel(venda) {
         const labels = {
             dinheiro: 'Dinheiro',
-            debito: 'Cartao de debito',
-            credito: 'Cartao de credito',
+            debito: 'Cartão de débito',
+            credito: 'Cartão de crédito',
             pix: 'PIX'
         };
         return labels[venda.pagamento] || this.capitalize(venda.pagamento);
@@ -2611,11 +4922,55 @@ class App {
         this.renderSelectVenda();
         this.renderMaquininhas();
         this.renderSelectMov();
-        this.renderVendas();
         this.renderMovimentos();
         this.renderBaixoEstoque();
         this.updatePaymentUI();
         this.renderCloudStatus();
+        this.scheduleSalesStaticFit();
+    }
+
+    scheduleSalesStaticFit() {
+        if (this.salesStaticFitTimer) {
+            window.clearTimeout(this.salesStaticFitTimer);
+        }
+        this.salesStaticFitTimer = window.setTimeout(() => this.applySalesStaticFit(), 20);
+    }
+
+    applySalesStaticFit() {
+        const vendasSection = this.elements.vendasSection;
+        if (!vendasSection) {
+            return;
+        }
+
+        const shouldFit = this.isSectionActive('vendas') || this.isSalesOnlyMode();
+        document.body.classList.toggle('sales-static-fit', shouldFit);
+
+        if (!shouldFit) {
+            vendasSection.style.removeProperty('--sales-fit-scale');
+            vendasSection.style.removeProperty('--sales-fit-height');
+            return;
+        }
+
+        vendasSection.style.setProperty('--sales-fit-scale', '1');
+
+        window.requestAnimationFrame(() => {
+            const header = this.elements.header;
+            const mainContent = this.elements.mainContent;
+            const headerVisible = header && window.getComputedStyle(header).display !== 'none';
+            const headerHeight = headerVisible ? header.getBoundingClientRect().height : 0;
+            const viewportHeight = Math.max(300, window.innerHeight - headerHeight - 8);
+            const viewportWidth = Math.max(320, mainContent?.clientWidth || window.innerWidth);
+            vendasSection.style.setProperty('--sales-fit-height', `${Math.round(viewportHeight)}px`);
+            const naturalHeight = Math.max(1, vendasSection.scrollHeight);
+            const naturalWidth = Math.max(1, vendasSection.scrollWidth);
+            const scaleByHeight = viewportHeight / naturalHeight;
+            const scaleByWidth = viewportWidth / naturalWidth;
+            const computedScale = Math.min(scaleByHeight, scaleByWidth);
+            const maxScale = 1;
+            const clampedScale = Math.min(maxScale, computedScale);
+            const safeScale = Number.isFinite(clampedScale) && clampedScale > 0 ? clampedScale : 1;
+            vendasSection.style.setProperty('--sales-fit-scale', safeScale.toFixed(3));
+        });
     }
 
     formatMoney(value) {
@@ -2633,6 +4988,15 @@ class App {
         return value.charAt(0).toUpperCase() + value.slice(1);
     }
 
+    escapeHtml(value) {
+        return String(value ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
     mostrarMsg(message, type = 'success') {
         const toast = document.createElement('div');
         toast.className = `toast ${type === 'warning' ? 'warning' : 'success'}`;
@@ -2646,6 +5010,7 @@ class App {
 }
 
 window.app = new App();
+
 
 
 

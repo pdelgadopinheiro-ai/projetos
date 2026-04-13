@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EasyStore | Vendas</title>
+    <style>
+        :root {
+            --bg: #f3f7f4;
+            --card: #ffffff;
+            --line: #d7e4dc;
+            --text: #143526;
+            --muted: #4f6d5f;
+            --primary: #1e7f57;
+            --primary-dark: #15563c;
+            --danger: #b34141;
+        }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            font-family: "Segoe UI", Tahoma, sans-serif;
+            background: linear-gradient(180deg, #f5faf7 0%, #eef5f1 100%);
+            color: var(--text);
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            display: grid;
+            gap: 18px;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: var(--card);
+            border: 1px solid var(--line);
+            border-radius: 14px;
+            padding: 14px 16px;
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 1.3rem;
+        }
+        .header a {
+            color: var(--primary-dark);
+            text-decoration: none;
+            font-weight: 600;
+        }
+        .grid {
+            display: grid;
+            gap: 18px;
+            grid-template-columns: 1.3fr 1fr;
+        }
+        .card {
+            background: var(--card);
+            border: 1px solid var(--line);
+            border-radius: 14px;
+            padding: 14px;
+        }
+        .card h2 {
+            margin: 0 0 10px;
+            font-size: 1.05rem;
+        }
+        .field {
+            display: grid;
+            gap: 6px;
+            margin-bottom: 10px;
+        }
+        .field label {
+            font-size: 0.9rem;
+            color: var(--muted);
+        }
+        .field input, .field select, .field button, .qty-input {
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            padding: 8px 10px;
+            font: inherit;
+        }
+        .actions {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .btn-primary {
+            background: var(--primary);
+            color: #fff;
+            border: 0;
+            cursor: pointer;
+        }
+        .btn-primary:hover { background: var(--primary-dark); }
+        .btn-secondary {
+            background: #f2f8f4;
+            color: var(--text);
+            border: 1px solid var(--line);
+            cursor: pointer;
+        }
+        .btn-danger {
+            background: var(--danger);
+            color: #fff;
+            border: 0;
+            cursor: pointer;
+        }
+        .table-wrap {
+            overflow: auto;
+            border: 1px solid var(--line);
+            border-radius: 10px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            min-width: 520px;
+        }
+        th, td {
+            padding: 9px 10px;
+            border-bottom: 1px solid #edf3ef;
+            text-align: left;
+            font-size: 0.92rem;
+            vertical-align: middle;
+        }
+        .text-right { text-align: right; }
+        .muted { color: var(--muted); font-size: 0.88rem; }
+        .summary {
+            display: grid;
+            gap: 8px;
+            margin-top: 10px;
+        }
+        .summary-row {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.95rem;
+        }
+        .summary-row.total {
+            font-size: 1.1rem;
+            font-weight: 700;
+        }
+        .status {
+            margin: 0;
+            font-size: 0.9rem;
+            color: var(--muted);
+        }
+        .kpis {
+            display: grid;
+            gap: 10px;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            margin-top: 12px;
+        }
+        .kpi {
+            padding: 10px;
+            border-radius: 10px;
+            background: #f6fbf8;
+            border: 1px solid var(--line);
+        }
+        .kpi strong {
+            display: block;
+            font-size: 1.1rem;
+        }
+        @media (max-width: 980px) {
+            .grid { grid-template-columns: 1fr; }
+            .kpis { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <main class="container">
+        <header class="header">
+            <div>
+                <h1>Frente de Caixa | Módulo de Vendas</h1>
+                <p class="muted">Módulo isolado em rota própria, integrado por API com produtos, estoque e relatórios.</p>
+            </div>
+            <a href="/">Voltar ao sistema principal</a>
+        </header>
+
+        <section class="grid">
+            <article class="card">
+                <h2>Catálogo de Produtos</h2>
+                <div class="field">
+                    <label for="search">Pesquisar produto</label>
+                    <input id="search" type="text" placeholder="Nome, código ou código de barras">
+                </div>
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Código</th>
+                                <th>Produto</th>
+                                <th>Estoque</th>
+                                <th class="text-right">Preço</th>
+                                <th>Qtd</th>
+                                <th>Ação</th>
+                            </tr>
+                        </thead>
+                        <tbody id="products-body">
+                            <tr><td colspan="6" class="muted">Carregando produtos...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </article>
+
+            <article class="card">
+                <h2>Resumo e Pagamento</h2>
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Produto</th>
+                                <th>Qtd</th>
+                                <th class="text-right">Subtotal</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody id="cart-body">
+                            <tr><td colspan="4" class="muted">Nenhum item no carrinho.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="summary">
+                    <div class="summary-row"><span>Subtotal</span><strong id="subtotal">R$ 0,00</strong></div>
+                    <div class="summary-row total"><span>Total</span><strong id="total">R$ 0,00</strong></div>
+                </div>
+                <div class="field">
+                    <label for="payment-method">Pagamento</label>
+                    <select id="payment-method">
+                        <option value="dinheiro">Dinheiro</option>
+                        <option value="pix">PIX</option>
+                        <option value="debito">Cartão de débito</option>
+                        <option value="credito">Cartão de crédito</option>
+                    </select>
+                </div>
+                <div class="actions">
+                    <button id="btn-finish" class="btn-primary">Finalizar venda</button>
+                    <button id="btn-clear" class="btn-secondary">Limpar carrinho</button>
+                </div>
+                <p id="sale-status" class="status">Caixa pronto para venda.</p>
+                <p class="muted">Atalhos: F1-F4 pagamento, F9 quantidade, F10/Alt+P busca, Enter adiciona primeiro item, Ctrl+Enter/F12 finaliza.</p>
+            </article>
+        </section>
+
+        <section class="card">
+            <h2>Indicadores Integrados</h2>
+            <div class="kpis">
+                <div class="kpi">
+                    <span class="muted">Vendas no período</span>
+                    <strong id="kpi-sales">0</strong>
+                </div>
+                <div class="kpi">
+                    <span class="muted">Faturamento</span>
+                    <strong id="kpi-revenue">R$ 0,00</strong>
+                </div>
+                <div class="kpi">
+                    <span class="muted">Produtos com estoque baixo</span>
+                    <strong id="kpi-low-stock">0</strong>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <script src="/vendas/vendas.js"></script>
+</body>
+</html>
