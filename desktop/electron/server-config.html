@@ -1,0 +1,274 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EasyStore - Configurar Servidor</title>
+    <style>
+        :root {
+            --bg: #f4f6fb;
+            --card: #ffffff;
+            --text: #1d2433;
+            --muted: #5a657a;
+            --line: #d7deed;
+            --primary: #1557ff;
+            --primary-strong: #0d43cb;
+            --danger: #c93535;
+            --success: #127f4c;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+            color: var(--text);
+            background: linear-gradient(170deg, #f8fbff 0%, #ecf1ff 100%);
+            display: grid;
+            place-items: center;
+            padding: 24px;
+        }
+
+        .card {
+            width: min(720px, 100%);
+            background: var(--card);
+            border: 1px solid var(--line);
+            border-radius: 14px;
+            box-shadow: 0 20px 45px rgba(26, 50, 110, 0.08);
+            padding: 28px;
+        }
+
+        h1 {
+            margin: 0 0 8px;
+            font-size: 28px;
+        }
+
+        p {
+            margin: 0;
+            color: var(--muted);
+            line-height: 1.45;
+        }
+
+        .helper {
+            margin-top: 14px;
+            color: var(--muted);
+            font-size: 14px;
+        }
+
+        .group {
+            margin-top: 20px;
+        }
+
+        label {
+            display: block;
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        input {
+            width: 100%;
+            border: 1px solid var(--line);
+            border-radius: 10px;
+            padding: 12px 14px;
+            font-size: 15px;
+            outline: none;
+        }
+
+        input:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(21, 87, 255, 0.12);
+        }
+
+        .actions {
+            margin-top: 18px;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        button {
+            border: 0;
+            border-radius: 10px;
+            padding: 11px 16px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .btn-primary {
+            background: var(--primary);
+            color: #fff;
+        }
+
+        .btn-primary:hover {
+            background: var(--primary-strong);
+        }
+
+        .btn-secondary {
+            background: #e8eefc;
+            color: #213150;
+        }
+
+        .status {
+            margin-top: 16px;
+            min-height: 20px;
+            font-size: 14px;
+            color: var(--muted);
+        }
+
+        .status.error {
+            color: var(--danger);
+            font-weight: 600;
+        }
+
+        .status.success {
+            color: var(--success);
+            font-weight: 600;
+        }
+
+        .quick-link {
+            margin-top: 16px;
+            display: inline-block;
+            color: var(--primary);
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        .quick-link:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <main class="card">
+        <h1>Configurar Servidor EasyStore</h1>
+        <p>Use a mesma URL do backend para todos os PCs. Assim, todos os computadores compartilham os dados na nuvem (Supabase).</p>
+
+        <form id="config-form" class="group">
+            <label for="server-url">URL do servidor (Render, VPS ou local)</label>
+            <input
+                id="server-url"
+                type="url"
+                placeholder="https://seu-app.onrender.com"
+                autocomplete="off"
+                required
+            >
+
+            <div class="actions">
+                <button class="btn-primary" type="submit" id="btn-save">Salvar e Abrir App</button>
+                <button class="btn-secondary" type="button" id="btn-open">Abrir App sem salvar</button>
+            </div>
+        </form>
+
+        <p class="helper">Dica: todos os PCs devem usar a mesma URL para se comunicarem entre si.</p>
+        <p id="status" class="status" aria-live="polite"></p>
+        <a id="open-link" class="quick-link" href="#" hidden>Abrir URL no navegador do sistema</a>
+    </main>
+
+    <script>
+        (function () {
+            const form = document.getElementById('config-form');
+            const input = document.getElementById('server-url');
+            const status = document.getElementById('status');
+            const btnSave = document.getElementById('btn-save');
+            const btnOpen = document.getElementById('btn-open');
+            const openLink = document.getElementById('open-link');
+
+            function setStatus(message, type) {
+                status.textContent = message || '';
+                status.className = 'status';
+                if (type) {
+                    status.classList.add(type);
+                }
+            }
+
+            function getUrlFromInput() {
+                return String(input.value || '').trim();
+            }
+
+            function updateQuickLink(url) {
+                const isValid = /^https?:\/\//i.test(url);
+                if (!isValid) {
+                    openLink.hidden = true;
+                    openLink.href = '#';
+                    return;
+                }
+                openLink.hidden = false;
+                openLink.href = url;
+            }
+
+            async function bootstrap() {
+                try {
+                    const config = await window.desktopBridge.getConfig();
+                    input.value = config.appUrl || config.defaultAppUrl || '';
+                    updateQuickLink(input.value);
+
+                    const url = new URL(window.location.href);
+                    const error = url.searchParams.get('error');
+                    if (error) {
+                        setStatus(error, 'error');
+                    }
+                } catch (error) {
+                    setStatus('Nao foi possivel carregar a configuracao inicial.', 'error');
+                }
+            }
+
+            form.addEventListener('submit', async (event) => {
+                event.preventDefault();
+                const appUrl = getUrlFromInput();
+                if (!appUrl) {
+                    setStatus('Informe a URL do servidor.', 'error');
+                    return;
+                }
+
+                btnSave.disabled = true;
+                btnOpen.disabled = true;
+                setStatus('Salvando configuracao...', null);
+                try {
+                    const result = await window.desktopBridge.saveConfig(appUrl);
+                    if (!result || !result.ok) {
+                        setStatus(result && result.error ? result.error : 'Falha ao salvar URL.', 'error');
+                        return;
+                    }
+                    setStatus('Configuracao salva. Abrindo app...', 'success');
+                    updateQuickLink(result.appUrl || appUrl);
+                } catch (error) {
+                    setStatus('Falha inesperada ao salvar configuracao.', 'error');
+                } finally {
+                    btnSave.disabled = false;
+                    btnOpen.disabled = false;
+                }
+            });
+
+            btnOpen.addEventListener('click', async () => {
+                setStatus('Abrindo app...', null);
+                try {
+                    await window.desktopBridge.loadApp();
+                } catch (error) {
+                    setStatus('Nao foi possivel abrir o app.', 'error');
+                }
+            });
+
+            input.addEventListener('input', () => {
+                updateQuickLink(getUrlFromInput());
+            });
+
+            openLink.addEventListener('click', async (event) => {
+                event.preventDefault();
+                const url = getUrlFromInput();
+                if (!url) {
+                    return;
+                }
+                await window.desktopBridge.openExternal(url);
+            });
+
+            bootstrap();
+        }());
+    </script>
+</body>
+</html>

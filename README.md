@@ -22,6 +22,12 @@ Sistema de gestao comercial com frontend estatico e backend Node para sincroniza
 - `.env.example`: exemplo das variaveis necessarias.
 - `Tabela_NCM_Vigente_20260331.json`: tabela oficial local da Receita usada pela API de NCM.
 
+## App desktop (Windows)
+
+- Rodar localmente: `npm run desktop`
+- Gerar instalador: `npm run build:desktop`
+- Guia completo para multi-PC com Supabase: `docs/DESKTOP_APP_SUPABASE.md`
+
 ## Passo a passo para conectar
 
 ### 1. Criar o projeto no Supabase
