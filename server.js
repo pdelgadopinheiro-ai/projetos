@@ -56,7 +56,12 @@ const CATEGORY_CHAPTER_HINTS = {
     cosmeticos: ['33'],
     perfumes: ['33'],
     higiene: ['33', '34', '48', '96'],
-    alimentos: ['02', '03', '04', '07', '08', '09', '10', '11', '16', '17', '18', '19', '20', '21', '22']
+    acessorios: ['39', '42', '61', '62', '64', '71', '73', '83', '85', '95'],
+    brinquedos: ['95'],
+    eletronicos: ['84', '85', '90'],
+    animais: ['01', '05', '23', '42'],
+    papelaria: ['48', '49', '82', '96'],
+    outras: []
 };
 const SEARCH_SYNONYMS = {
     shampoo: ['xampu', 'xampus'],

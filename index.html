@@ -113,8 +113,12 @@
                         <option value="cosmeticos">Cosméticos</option>
                         <option value="perfumes">Perfumes</option>
                         <option value="higiene">Higiene</option>
-                        <option value="alimentos">Alimentos</option>
-                        <option value="outros">Outros</option>
+                        <option value="acessorios">Acessórios</option>
+                        <option value="brinquedos">Brinquedos</option>
+                        <option value="eletronicos">Eletrônicos</option>
+                        <option value="animais">Animais</option>
+                        <option value="papelaria">Papelaria</option>
+                        <option value="outras">Outras</option>
                     </select>
                 </div>
 
@@ -126,14 +130,13 @@
                                 <th>Nome</th>
                                 <th>NCM</th>
                                 <th>Categoria</th>
-                                <th>Custo</th>
                                 <th>Preço</th>
                                 <th>Estoque</th>
                                 <th>Ações</th>
                             </tr>
                         </thead>
                         <tbody id="tb-produtos">
-                            <tr><td colspan="8" class="empty">Nenhum produto cadastrado</td></tr>
+                            <tr><td colspan="7" class="empty">Nenhum produto cadastrado</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -241,7 +244,7 @@
                                     <option value="">Selecione a maquininha</option>
                                 </select>
                             </div>
-                            <p id="maquininha-status-venda" class="status-text compact-text">Cadastre e pareie uma maquininha na aba Configurações.</p>
+                            <p id="maquininha-status-venda" class="status-text compact-text">Cadastre e vincule uma maquininha na aba Configurações.</p>
                         </div>
 
                         <div id="pix-fields" class="payment-box" hidden>
@@ -496,9 +499,9 @@
                             <input type="text" id="cfg-maq-endpoint" placeholder="Ex: http://127.0.0.1:8080/pagamentos">
                         </div>
                         <div class="action-row">
+                            <button class="btn btn-success" id="btn-add-vincular-maq">Cadastrar e Vincular</button>
                             <button class="btn btn-primary" id="btn-add-maq">Cadastrar Maquininha</button>
-                            <button class="btn btn-secondary" id="btn-connect-maq">Conectar Selecionada</button>
-                            <button class="btn btn-secondary" id="btn-parear-maq">Parear Selecionada</button>
+                            <button class="btn btn-secondary" id="btn-vincular-maq">Vincular Selecionada</button>
                         </div>
                         <p class="status-text compact-text">Suporte genérico: cadastre qualquer marca/modelo e conecte por Manual, Bluetooth, USB, Wi-Fi, Serial ou API/TEF.</p>
                         <div class="table-wrap compact-wrap">
@@ -567,8 +570,12 @@
                         <option value="cosmeticos">Cosméticos</option>
                         <option value="perfumes">Perfumes</option>
                         <option value="higiene">Higiene</option>
-                        <option value="alimentos">Alimentos</option>
-                        <option value="outros">Outros</option>
+                        <option value="acessorios">Acessórios</option>
+                        <option value="brinquedos">Brinquedos</option>
+                        <option value="eletronicos">Eletrônicos</option>
+                        <option value="animais">Animais</option>
+                        <option value="papelaria">Papelaria</option>
+                        <option value="outras">Outras</option>
                     </select>
                 </div>
                 <div class="form-group">
@@ -582,10 +589,6 @@
                     <small id="prod-ncm-help" class="field-help">A API consulta a base oficial da Receita Federal e tenta sugerir o NCM automaticamente.</small>
                     <div id="prod-ncm-suggestions" class="ncm-suggestions" hidden></div>
                     <div id="prod-ncm-validation" class="ncm-validation" hidden></div>
-                </div>
-                <div class="form-group">
-                    <label for="prod-custo">Preço de custo</label>
-                    <input type="number" id="prod-custo" min="0" step="0.01" required>
                 </div>
                 <div class="form-group">
                     <label for="prod-preco">Preço de venda</label>
@@ -637,7 +640,7 @@
             <h2>Selecionar produto (F10)</h2>
             <div class="sale-product-picker-controls">
                 <div class="form-group">
-                    <label for="sale-product-search">Pesquisar por nome ou codigo</label>
+                    <label for="sale-product-search">Pesquisar por nome ou código</label>
                     <input type="text" id="sale-product-search" placeholder="Digite para filtrar produtos" autocomplete="off">
                 </div>
                 <div class="form-group sale-product-qty-field">

@@ -1,4 +1,4 @@
-class App {
+﻿class App {
     constructor() {
         this.vendaAtual = [];
         this.prodEditando = null;
@@ -362,8 +362,14 @@ class App {
 
         document.getElementById('btn-salvar-cfg').addEventListener('click', () => this.salvarConfig());
         document.getElementById('btn-add-maq').addEventListener('click', () => this.cadastrarMaquininha());
-        document.getElementById('btn-connect-maq').addEventListener('click', () => this.conectarMaquininhaSelecionada());
-        document.getElementById('btn-parear-maq').addEventListener('click', () => this.parearMaquininhaSelecionada());
+        const btnAddVincularMaq = document.getElementById('btn-add-vincular-maq');
+        if (btnAddVincularMaq) {
+            btnAddVincularMaq.addEventListener('click', () => this.cadastrarMaquininha({ vincular: true }));
+        }
+        const btnVincularMaq = document.getElementById('btn-vincular-maq');
+        if (btnVincularMaq) {
+            btnVincularMaq.addEventListener('click', () => this.vincularMaquininhaSelecionada());
+        }
         document.getElementById('btn-export').addEventListener('click', () => this.exportarBackup());
         document.getElementById('btn-limpar').addEventListener('click', () => this.limparDados());
 
@@ -449,11 +455,8 @@ class App {
             }
 
             const { maqAction, id } = actionButton.dataset;
-            if (maqAction === 'conectar') {
-                this.conectarMaquininha(id);
-            }
-            if (maqAction === 'parear') {
-                this.parearMaquininha(id);
+            if (maqAction === 'vincular') {
+                this.vincularMaquininha(id);
             }
             if (maqAction === 'remover') {
                 this.removerMaquininha(id);
@@ -546,7 +549,7 @@ class App {
         }
 
         try {
-            const response = await fetch(`/api/ncm/searchá${params.toString()}`);
+            const response = await fetch(`/api/ncm/search?${params.toString()}`);
             if (!response.ok) {
                 const errorText = await response.text();
                 throw new Error(errorText || `Falha na busca de NCM (HTTP ${response.status}).`);
@@ -602,11 +605,37 @@ class App {
             descricao: item.descricao
         }));
 
-        if (!suggestions.length && categoria === 'alimentos') {
-            suggestions.push({
-                codigo: '2106.90.90',
-                descricao: 'Alimentos e condimentos processados'
-            });
+        if (!suggestions.length) {
+            const categoryFallback = {
+                acessorios: {
+                    codigo: '4202.99.00',
+                    descricao: 'Acessórios diversos de uso pessoal'
+                },
+                brinquedos: {
+                    codigo: '9503.00.99',
+                    descricao: 'Brinquedos e modelos recreativos'
+                },
+                eletronicos: {
+                    codigo: '8543.70.99',
+                    descricao: 'Aparelhos e dispositivos eletrônicos diversos'
+                },
+                animais: {
+                    codigo: '4201.00.90',
+                    descricao: 'Artefatos e acessórios para animais'
+                },
+                papelaria: {
+                    codigo: '4820.10.00',
+                    descricao: 'Cadernos e artigos de papelaria'
+                },
+                outras: {
+                    codigo: '3926.90.90',
+                    descricao: 'Outros artefatos de uso diverso'
+                }
+            };
+            const fallback = categoryFallback[categoria];
+            if (fallback) {
+                suggestions.push(fallback);
+            }
         }
 
         return suggestions;
@@ -788,7 +817,6 @@ class App {
             ncm: this.normalizeNcm(this.elements.prodNcm.value),
             ncmKeywords: this.elements.prodNcmKeywords.value.trim(),
             categoria: document.getElementById('prod-cat').value,
-            custo: Number(document.getElementById('prod-custo').value),
             preco: Number(document.getElementById('prod-preco').value),
             estoque: Number(document.getElementById('prod-estoque').value),
             minimo: Number(document.getElementById('prod-minimo').value)
@@ -797,11 +825,11 @@ class App {
 
     validarCamposBasicosProduto(dados, { exigirNcm = true } = {}) {
         if (exigirNcm && !dados.ncm) {
-            this.mostrarMsg('Informe um NCM valido com 8 dígitos para validar.', 'warning');
+            this.mostrarMsg('Informe um NCM válido com 8 dígitos para validar.', 'warning');
             return false;
         }
 
-        if (!dados.nome || !dados.categoria || dados.preco < 0 || dados.custo < 0 || dados.estoque < 0 || dados.minimo < 1) {
+        if (!dados.nome || !dados.categoria || dados.preco < 0 || dados.estoque < 0 || dados.minimo < 1) {
             this.mostrarMsg('Preencha os campos do produto corretamente.', 'warning');
             return false;
         }
@@ -999,7 +1027,7 @@ class App {
 
     renderProdutos(produtos = db.getProdutos()) {
         if (!produtos.length) {
-            this.elements.tbProdutos.innerHTML = '<tr><td colspan="8" class="empty">Nenhum produto encontrado</td></tr>';
+            this.elements.tbProdutos.innerHTML = '<tr><td colspan="7" class="empty">Nenhum produto encontrado</td></tr>';
             return;
         }
 
@@ -1009,7 +1037,6 @@ class App {
                 <td>${produto.nome}</td>
                 <td>${produto.ncm || '-'}</td>
                 <td>${this.capitalize(produto.categoria)}</td>
-                <td>${this.formatMoney(produto.custo)}</td>
                 <td>${this.formatMoney(produto.preco)}</td>
                 <td><span class="stock-pill ${produto.estoque <= produto.minimo ? 'danger' : 'ok'}">${produto.estoque}</span></td>
                 <td>
@@ -1671,7 +1698,7 @@ class App {
         const clienteNome = (nota.cliente?.nome || 'CONSUMIDOR FINAL').trim() || 'CONSUMIDOR FINAL';
         const clienteDoc = this.formatDocument(nota.cliente?.documento || '');
         const clienteEndereco = context.enderecoDestinatario || 'Não informado';
-        const naturezaOperação = String(nota.naturezaOperação || 'Venda de mercadoria').trim();
+        const naturezaOperacao = String(nota.naturezaOperacao || 'Venda de mercadoria').trim();
         const finalidade = String(nota.finalidade || 'Normal').trim();
         const dataEmissao = context.emitidoDataIso;
         const horaEmissao = context.emitidoHoraIso;
@@ -1789,7 +1816,7 @@ class App {
                     </section>
                     <section class="danfe-box">
                         <h4>Operação</h4>
-                        <p><strong>Natureza da Operação:</strong> ${this.escapeHtml(naturezaOperação)}</p>
+                        <p><strong>Natureza da Operação:</strong> ${this.escapeHtml(naturezaOperacao)}</p>
                         <p><strong>Finalidade:</strong> ${this.escapeHtml(finalidade)}</p>
                     </section>
                 </section>
@@ -1833,19 +1860,19 @@ class App {
                         <h4>Informações de Pagamento</h4>
                         <p><strong>Forma:</strong> ${this.escapeHtml(formaPagamento)}</p>
                         <p><strong>Vencimento:</strong> ${this.escapeHtml(dataVencimento)}</p>
-                        <p><strong>Instrucoes:</strong> ${this.escapeHtml(instrucoesPagamento)}</p>
+                        <p><strong>Instru??es:</strong> ${this.escapeHtml(instrucoesPagamento)}</p>
                         ${incluirBoleto
-                ? `<p><strong>Linha digitavel:</strong> ${this.escapeHtml(linhaDigitavel)}</p>`
+                ? `<p><strong>Linha digit?vel:</strong> ${this.escapeHtml(linhaDigitavel)}</p>`
                 : '<p><strong>Cobrança própria:</strong> Não informada.</p>'}
                     </section>
                 </section>
 
                 <section class="danfe-grid nfe-footer-grid">
                     <section class="danfe-box">
-                        <h4>Observacoes</h4>
+                        <h4>Observa??es</h4>
                         <p>${this.escapeHtml(String(nota.observacoes || 'Documento auxiliar local para conferência e impressão.'))}</p>
-                        <p><strong>Assinatura/Autenticacao:</strong> Protocolo ${this.escapeHtml(protocoloAutorizacao)} | Chave ${this.escapeHtml(chaveAcessoFormatada || '-')}</p>
-                        <p class="fiscal-warning">Preencha NCM, CFOP, CST/CSOSN, base e alíquotas conforme legislação e regime tributario.</p>
+                        <p><strong>Assinatura/Autentica??o:</strong> Protocolo ${this.escapeHtml(protocoloAutorizacao)} | Chave ${this.escapeHtml(chaveAcessoFormatada || '-')}</p>
+                        <p class="fiscal-warning">Preencha NCM, CFOP, CST/CSOSN, base e alíquotas conforme legislação e regime tribut?rio.</p>
                     </section>
                     <section class="danfe-box nfe-qr-barcode-box">
                         <div class="nfe-qr-barcode-grid">
@@ -1853,12 +1880,12 @@ class App {
                                 <p class="danfe-label">QR Code NF-e</p>
                                 ${qrCodeUrl
                 ? `<img src="${this.escapeHtml(qrCodeUrl)}" alt="QR Code de consulta da NF-e">`
-                : '<p>QR Code indisponivel sem chave de acesso.</p>'}
+                : '<p>QR Code indispon?vel sem chave de acesso.</p>'}
                             </div>
                             <div class="nfe-access-inline-box">
                                 <p class="danfe-label">Chave de acesso</p>
                                 <div class="nfe-access-barcode nfe-access-barcode-inline">
-                                    ${chaveAcessoBarcode || '<p>Codigo de barras indisponivel sem chave de acesso.</p>'}
+                                    ${chaveAcessoBarcode || '<p>C?digo de barras indispon?vel sem chave de acesso.</p>'}
                                 </div>
                             </div>
                         </div>
@@ -2904,8 +2931,8 @@ class App {
         this.ensureSaleProductSelectionVisible();
 
         if (this.elements.saleProductPickerStatus) {
-            const disponíveis = produtos.filter((produto) => this.isSaleProductSelectable(produto)).length;
-            this.elements.saleProductPickerStatus.textContent = `${produtos.length} produto(s) listado(s), ${disponíveis} disponível(is). Use setas para navegar, TAB para botões e ENTER para selecionar.`;
+            const disponiveis = produtos.filter((produto) => this.isSaleProductSelectable(produto)).length;
+            this.elements.saleProductPickerStatus.textContent = `${produtos.length} produto(s) listado(s), ${disponiveis} disponível(is). Use setas para navegar, TAB para botões e ENTER para selecionar.`;
         }
     }
 
@@ -3318,7 +3345,6 @@ class App {
         this.renderNcmSuggestions([]);
         this.hideNcmValidation();
         this.resetNcmButtonState();
-        document.getElementById('prod-custo').value = produto.custo;
         document.getElementById('prod-preco').value = produto.preco;
         document.getElementById('prod-estoque').value = produto.estoque;
         document.getElementById('prod-minimo').value = produto.minimo;
@@ -4056,7 +4082,7 @@ class App {
                 }
             });
 
-            this.mostrarMsg(`Venda registrada com sucesso. ${nota.tipo} nº ${nota.numero} gerada.`, 'success');
+            this.mostrarMsg(`Venda registrada com sucesso. ${nota.tipo} nÂº ${nota.numero} gerada.`, 'success');
 
             if (perfilFiscal === 'atacado') {
                 const emissaoNfe = await this.emitirNfeAtacado(venda, nota);
@@ -4287,18 +4313,16 @@ class App {
             <h3>Relatório de Estoque</h3>
             <p>Gerado em ${this.formatDate(new Date().toISOString())}</p>
             ${this.buildReportTable(
-                ['Código', 'Nome', 'NCM', 'Estoque', 'Mínimo', 'Custo', 'Preço', 'Margem'],
+                ['Código', 'Nome', 'NCM', 'Estoque', 'Mínimo', 'Preço', 'Total em estoque'],
                 produtos.map((produto) => {
-                    const margem = produto.preco > 0 ? (((produto.preco - produto.custo) / produto.preco) * 100).toFixed(1) : '0.0';
                     return [
                         produto.codigo,
                         produto.nome,
                         produto.ncm || '-',
                         produto.estoque,
                         produto.minimo,
-                        this.formatMoney(produto.custo),
                         this.formatMoney(produto.preco),
-                        `${margem}%`
+                        this.formatMoney(produto.preco * produto.estoque)
                     ];
                 })
             )}
@@ -4457,21 +4481,42 @@ class App {
         return labels[normalized] || this.capitalize(normalized);
     }
 
-    async cadastrarMaquininha() {
-        const config = db.getConfig();
-        const provider = String(this.elements.cfgMaqProvider?.value || '').trim();
-        const nome = this.elements.cfgMaqNome.value.trim();
-        const modelo = this.elements.cfgMaqModelo.value.trim();
-        const conexao = this.normalizeMaquininhaConexao(this.elements.cfgMaqConexao.value);
-        const identificador = String(this.elements.cfgMaqIdentificador?.value || '').trim();
-        const endpoint = String(this.elements.cfgMaqEndpoint?.value || '').trim();
-
-        if (!nome) {
-            this.mostrarMsg('Informe pelo menos o nome exibido da maquininha.', 'warning');
-            return;
+    resolveMaquininhaNome({ nome, provider, modelo, fallbackIndex = 1 }) {
+        const normalizedNome = String(nome || '').trim();
+        if (normalizedNome) {
+            return normalizedNome;
         }
 
-        const maquininhas = [...(config.maquininhas || []), {
+        const normalizedProvider = String(provider || '').trim();
+        const normalizedModelo = String(modelo || '').trim();
+        if (normalizedProvider && normalizedModelo) {
+            return `${normalizedProvider} ${normalizedModelo}`;
+        }
+        if (normalizedProvider) {
+            return normalizedProvider;
+        }
+        if (normalizedModelo) {
+            return normalizedModelo;
+        }
+        return `Maquininha ${fallbackIndex}`;
+    }
+
+    async cadastrarMaquininha({ vincular = false } = {}) {
+        const config = db.getConfig();
+        const provider = String(this.elements.cfgMaqProvider?.value || '').trim();
+        const modelo = this.elements.cfgMaqModelo.value.trim();
+        const conexaoSelecionada = this.normalizeMaquininhaConexao(this.elements.cfgMaqConexao.value);
+        const identificador = String(this.elements.cfgMaqIdentificador?.value || '').trim();
+        const endpoint = String(this.elements.cfgMaqEndpoint?.value || '').trim();
+        const nome = this.resolveMaquininhaNome({
+            nome: this.elements.cfgMaqNome.value,
+            provider,
+            modelo,
+            fallbackIndex: (config.maquininhas || []).length + 1
+        });
+        const conexao = (endpoint && conexaoSelecionada === 'manual') ? 'api' : conexaoSelecionada;
+
+        const novaMaquininha = {
             id: `maq_${Date.now()}`,
             provider,
             nome,
@@ -4484,7 +4529,8 @@ class App {
             connectedDetails: '',
             lastError: '',
             pareadoEm: null
-        }];
+        };
+        const maquininhas = [...(config.maquininhas || []), novaMaquininha];
 
         await db.setConfig({ maquininhas });
         if (this.elements.cfgMaqProvider) {
@@ -4499,27 +4545,68 @@ class App {
         if (this.elements.cfgMaqEndpoint) {
             this.elements.cfgMaqEndpoint.value = '';
         }
+        this.elements.vendaMaquininha.value = novaMaquininha.id;
         this.renderMaquininhas();
+        this.elements.vendaMaquininha.value = novaMaquininha.id;
         this.updatePaymentUI();
-        this.mostrarMsg('Maquininha cadastrada com suporte genérico.');
+
+        if (vincular) {
+            await this.vincularMaquininha(novaMaquininha.id);
+            return;
+        }
+
+        const mensagemConexao = endpoint && conexaoSelecionada === 'manual'
+            ? ' Endpoint detectado; tipo de conex?o ajustado para API/TEF automaticamente.'
+            : '';
+        this.mostrarMsg(`Maquininha cadastrada com sucesso.${mensagemConexao} Clique em "Vincular Selecionada" para finalizar.`);
     }
 
-    async conectarMaquininhaSelecionada() {
+    async vincularMaquininhaSelecionada() {
         const config = db.getConfig();
         const alvo = this.elements.vendaMaquininha.value || config.maquininhas?.[0]?.id;
         if (!alvo) {
-            this.mostrarMsg('Cadastre uma maquininha antes de conectar.', 'warning');
+            this.mostrarMsg('Cadastre uma maquininha antes de vincular.', 'warning');
             return;
         }
-        await this.conectarMaquininha(alvo);
+        await this.vincularMaquininha(alvo);
     }
 
-    async conectarMaquininha(id) {
+    async conectarMaquininhaSelecionada() {
+        await this.vincularMaquininhaSelecionada();
+    }
+
+    async vincularMaquininha(id) {
+        const resultado = await this.conectarMaquininha(id, { silent: true });
+        if (!resultado?.ok) {
+            this.mostrarMsg(resultado?.message || 'N?o foi poss?vel conectar a maquininha.', 'warning');
+            return false;
+        }
+
+        const pareada = await this.parearMaquininha(id, { silent: true });
+        if (!pareada) {
+            this.mostrarMsg('A maquininha foi conectada, mas n?o foi poss?vel concluir o pareamento.', 'warning');
+            return false;
+        }
+
+        this.elements.vendaMaquininha.value = id;
+        this.renderMaquininhas();
+        this.updatePaymentUI();
+        const config = db.getConfig();
+        const maquininha = (config.maquininhas || []).find((item) => item.id === id);
+        const nome = maquininha?.nome || 'Maquininha';
+        this.mostrarMsg(`Maquininha vinculada e pronta para uso: ${nome}.`);
+        return true;
+    }
+
+    async conectarMaquininha(id, { silent = false } = {}) {
         const config = db.getConfig();
         const alvo = (config.maquininhas || []).find((maquininha) => maquininha.id === id);
         if (!alvo) {
-            this.mostrarMsg('Maquininha não encontrada para conexão.', 'warning');
-            return;
+            const message = 'Maquininha n?o encontrada para conex?o.';
+            if (!silent) {
+                this.mostrarMsg(message, 'warning');
+            }
+            return { ok: false, message };
         }
 
         const resultado = await this.testarConexaoMaquininha(alvo);
@@ -4546,7 +4633,10 @@ class App {
         await db.setConfig({ maquininhas });
         this.renderMaquininhas();
         this.updatePaymentUI();
-        this.mostrarMsg(resultado.message, resultado.ok ? 'success' : 'warning');
+        if (!silent) {
+            this.mostrarMsg(resultado.message, resultado.ok ? 'success' : 'warning');
+        }
+        return resultado;
     }
 
     async testarConexaoMaquininha(maquininha) {
@@ -4654,8 +4744,15 @@ class App {
         await this.parearMaquininha(alvo);
     }
 
-    async parearMaquininha(id) {
+    async parearMaquininha(id, { silent = false } = {}) {
         const config = db.getConfig();
+        const alvo = (config.maquininhas || []).find((maquininha) => maquininha.id === id);
+        if (!alvo) {
+            if (!silent) {
+                this.mostrarMsg('Maquininha n?o encontrada para pareamento.', 'warning');
+            }
+            return false;
+        }
         const now = new Date().toISOString();
         const maquininhas = (config.maquininhas || []).map((maquininha) => {
             if (maquininha.id === id) {
@@ -4681,7 +4778,10 @@ class App {
         await db.setConfig({ maquininhas });
         this.renderMaquininhas();
         this.updatePaymentUI();
-        this.mostrarMsg('Maquininha pareada no sistema.');
+        if (!silent) {
+            this.mostrarMsg('Maquininha pareada no sistema.');
+        }
+        return true;
     }
 
     async removerMaquininha(id) {
@@ -4714,7 +4814,7 @@ class App {
 
         if (!maquininhas.length) {
             this.elements.tbMaquininhas.innerHTML = '<tr><td colspan="7" class="empty">Nenhuma maquininha cadastrada</td></tr>';
-            this.elements.maquininhaStatusVenda.textContent = 'Cadastre, conecte e pareie uma maquininha na aba Configurações.';
+            this.elements.maquininhaStatusVenda.textContent = 'Cadastre e vincule uma maquininha na aba Configura??es.';
             return;
         }
 
@@ -4739,8 +4839,7 @@ class App {
                     <td>${this.escapeHtml(conectadoEm)}</td>
                     <td>
                         <div class="action-row nowrap">
-                            <button class="btn btn-secondary btn-small" data-maq-action="conectar" data-id="${maquininha.id}">Conectar</button>
-                            <button class="btn btn-secondary btn-small" data-maq-action="parear" data-id="${maquininha.id}">Parear</button>
+                            <button class="btn btn-secondary btn-small" data-maq-action="vincular" data-id="${maquininha.id}">Vincular</button>
                             <button class="btn btn-danger btn-small" data-maq-action="remover" data-id="${maquininha.id}">Remover</button>
                         </div>
                     </td>
@@ -4752,7 +4851,7 @@ class App {
         const conectada = pareada || maquininhas.find((maquininha) => maquininha.status === 'conectada');
         this.elements.maquininhaStatusVenda.textContent = conectada
             ? `Maquininha pronta para uso: ${conectada.nome} (${conectada.modelo || 'modelo livre'}).`
-            : 'Existe maquininha cadastrada, mas nenhuma foi conectada.';
+            : 'Existe maquininha cadastrada, mas nenhuma foi vinculada.';
     }
     updatePaymentUI() {
         const pagamento = this.elements.vendaPagamento.value;
@@ -4805,7 +4904,7 @@ class App {
         const total = this.getSaleTotal();
         this.elements.pixChaveExibicao.textContent = config.pixChave || 'Nenhuma chave PIX configurada.';
         this.elements.pixBeneficiario.textContent = config.nomeLoja
-            ? `${config.nomeLoja}${config.pixCidade ? ` • ${config.pixCidade}` : ''}`
+            ? `${config.nomeLoja}${config.pixCidade ? ` â€¢ ${config.pixCidade}` : ''}`
             : '';
 
         if (this.elements.vendaPagamento.value !== 'pix') {
@@ -5051,6 +5150,7 @@ class App {
 }
 
 window.app = new App();
+
 
 
 

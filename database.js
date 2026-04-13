@@ -105,7 +105,8 @@
         }
 
         async addProduto(dados) {
-            const codigo = this.generateProductCode(dados.categoria);
+            const categoria = this.normalizeProductCategory(dados.categoria);
+            const codigo = this.generateProductCode(categoria);
             const codigoBarras = this.resolveProductBarcode(dados.codigoBarras, codigo);
             const barcodeManualValido = this.isValidBarcode(dados.codigoBarras);
             const produto = {
@@ -117,8 +118,7 @@
                 codigoBarras,
                 barcodeFormat: this.detectBarcodeFormat(codigoBarras),
                 barcodeSource: barcodeManualValido ? 'externo' : 'interno',
-                categoria: dados.categoria,
-                custo: Number(dados.custo),
+                categoria,
                 preco: Number(dados.preco),
                 estoque: Number(dados.estoque),
                 minimo: Number(dados.minimo),
@@ -146,6 +146,7 @@
                 nome: typeof dados.nome === 'string' ? dados.nome.trim() : produto.nome,
                 ncm: this.normalizeNcm(dados.ncm ?? produto.ncm),
                 ncmKeywords: this.normalizeKeywords(dados.ncmKeywords ?? produto.ncmKeywords),
+                categoria: this.normalizeProductCategory(dados.categoria ?? produto.categoria),
                 codigoBarras,
                 barcodeFormat: this.detectBarcodeFormat(codigoBarras),
                 barcodeSource: barcodeManualValido ? 'externo' : 'interno',
@@ -621,6 +622,10 @@
             merged.config.fiscalPrinterNameNfce = String(merged.config.fiscalPrinterNameNfce || '').trim();
             merged.produtos = merged.produtos.map((produto) => ({
                 ...produto,
+                categoria: this.normalizeProductCategory(produto.categoria),
+                preco: Number(produto.preco || 0),
+                estoque: Number(produto.estoque || 0),
+                minimo: Math.max(1, Number(produto.minimo || 1)),
                 ncm: this.normalizeNcm(produto.ncm),
                 ncmKeywords: this.normalizeKeywords(produto.ncmKeywords),
                 codigoBarras: this.resolveProductBarcode(produto.codigoBarras, produto.codigo),
@@ -726,12 +731,42 @@
                 cosmeticos: 'COS',
                 perfumes: 'PER',
                 higiene: 'HIG',
-                alimentos: 'ALI',
-                outros: 'OUT'
+                acessorios: 'ACE',
+                brinquedos: 'BRI',
+                eletronicos: 'ELE',
+                animais: 'ANI',
+                papelaria: 'PAP',
+                outras: 'OUT'
             };
-            const prefix = map[category] || 'PRD';
+            const prefix = map[this.normalizeProductCategory(category)] || 'PRD';
             const sameCategoryCount = this.state.produtos.filter((produto) => produto.codigo && produto.codigo.startsWith(prefix)).length + 1;
             return `${prefix}${String(sameCategoryCount).padStart(5, '0')}`;
+        }
+
+        normalizeProductCategory(value) {
+            const normalized = String(value || '').trim().toLowerCase();
+            const aliases = {
+                alimentos: 'acessorios',
+                outros: 'outras',
+                outro: 'outras',
+                acessorio: 'acessorios',
+                eletronico: 'eletronicos',
+                brinquedo: 'brinquedos',
+                animal: 'animais'
+            };
+            const mapped = aliases[normalized] || normalized;
+            const allowed = new Set([
+                'cosmeticos',
+                'perfumes',
+                'higiene',
+                'acessorios',
+                'brinquedos',
+                'eletronicos',
+                'animais',
+                'papelaria',
+                'outras'
+            ]);
+            return allowed.has(mapped) ? mapped : 'outras';
         }
 
         normalizeNcm(value) {
