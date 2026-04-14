@@ -1,6 +1,7 @@
 (function () {
     const STORAGE_KEY = 'easystore.state.v3';
     const CONNECTION_KEY = 'easystore.connection.v2';
+    const AUTO_SYNC_INTERVAL_MS = 8000;
 
     const DEFAULT_CONNECTION = {
         provider: 'api',
@@ -40,7 +41,8 @@
             }
         },
         meta: {
-            updatedAt: null
+            updatedAt: null,
+            configUpdatedAt: null
         }
     };
 
@@ -55,42 +57,24 @@
                 lastSyncAt: null
             };
             this.writeQueue = Promise.resolve();
+            this.syncInProgress = false;
+            this.autoSyncTimer = null;
         }
 
         async init() {
             this.state = this.loadLocalState();
             await this.bootstrapConnection();
             this.applySyncStatus();
+            this.configureAutoSync();
 
             if (!this.isCloudEnabled()) {
                 return this.state;
             }
 
-            try {
-                const remoteState = await this.fetchRemoteState();
-
-                if (remoteState) {
-                    const localUpdatedAt = this.getUpdatedAt(this.state);
-                    const remoteUpdatedAt = this.getUpdatedAt(remoteState);
-
-                    if (remoteUpdatedAt >= localUpdatedAt) {
-                        this.state = this.normalizeState(remoteState);
-                        this.persistLocalState();
-                    } else {
-                        await this.persistRemoteState();
-                    }
-                } else {
-                    await this.persistRemoteState();
-                }
-
-                this.syncStatus.connected = true;
-                this.syncStatus.message = 'API em nuvem conectada e sincronizada.';
-                this.syncStatus.lastSyncAt = new Date().toISOString();
-            } catch (error) {
-                console.error('Falha ao inicializar a nuvem:', error);
-                this.syncStatus.connected = false;
-                this.syncStatus.message = 'Falha ao conectar com a API. O app continua em modo local.';
-            }
+            await this.syncNow({
+                silent: true,
+                successMessage: 'API em nuvem conectada e sincronizada.'
+            });
 
             this.applySyncStatus();
             return this.state;
@@ -384,6 +368,7 @@
                     }))
                     : this.state.config.maquininhas
             };
+            this.state.meta.configUpdatedAt = new Date().toISOString();
             await this.commit();
         }
 
@@ -400,13 +385,18 @@
 
             localStorage.setItem(CONNECTION_KEY, JSON.stringify(this.connection));
             this.applySyncStatus();
+            this.configureAutoSync();
 
             if (this.isCloudEnabled()) {
-                await this.syncNow();
+                await this.syncNow({ silent: true });
             }
         }
 
-        async syncNow() {
+        async syncNow({ silent = false, successMessage = 'Sincronizacao concluida com sucesso.' } = {}) {
+            if (this.syncInProgress) {
+                return false;
+            }
+
             if (!this.isCloudEnabled()) {
                 this.syncStatus.connected = false;
                 this.syncStatus.message = 'API nao configurada. O app segue em modo local.';
@@ -414,29 +404,44 @@
                 return false;
             }
 
+            this.syncInProgress = true;
             try {
                 const remoteState = await this.fetchRemoteState();
-                const localUpdatedAt = this.getUpdatedAt(this.state);
-                const remoteUpdatedAt = this.getUpdatedAt(remoteState);
+                const localState = this.normalizeState(this.state);
+                const remoteNormalized = remoteState ? this.normalizeState(remoteState) : null;
+                const merged = remoteNormalized
+                    ? this.mergeStates(localState, remoteNormalized)
+                    : localState;
 
-                if (!remoteState || localUpdatedAt >= remoteUpdatedAt) {
-                    await this.persistRemoteState();
-                } else {
-                    this.state = this.normalizeState(remoteState);
-                    this.persistLocalState();
+                const localSignature = this.createStateSignature(localState);
+                const remoteSignature = remoteNormalized ? this.createStateSignature(remoteNormalized) : '';
+                const mergedSignature = this.createStateSignature(merged);
+
+                if (mergedSignature !== localSignature) {
+                    this.state = merged;
+                }
+                this.persistLocalState();
+
+                if (!remoteNormalized || mergedSignature !== remoteSignature) {
+                    await this.persistRemoteState(merged);
                 }
 
                 this.syncStatus.connected = true;
-                this.syncStatus.message = 'Sincronizacao concluida com sucesso.';
+                this.syncStatus.message = successMessage;
                 this.syncStatus.lastSyncAt = new Date().toISOString();
                 this.applySyncStatus();
                 return true;
             } catch (error) {
                 console.error('Falha ao sincronizar:', error);
                 this.syncStatus.connected = false;
-                this.syncStatus.message = `Erro na sincronizacao: ${error.message}`;
+                this.syncStatus.message = `Erro na sincronizacao: ${error.message || 'sem detalhes'}`;
                 this.applySyncStatus();
-                throw error;
+                if (!silent) {
+                    throw error;
+                }
+                return false;
+            } finally {
+                this.syncInProgress = false;
             }
         }
 
@@ -491,14 +496,25 @@
 
             this.writeQueue = this.writeQueue.then(async () => {
                 if (this.isCloudEnabled()) {
-                    await this.persistRemoteState();
-                    this.syncStatus.connected = true;
-                    this.syncStatus.message = 'Dados atualizados localmente e pela API segura.';
-                    this.syncStatus.lastSyncAt = new Date().toISOString();
+                    const synced = await this.syncNow({
+                        silent: true,
+                        successMessage: 'Dados atualizados localmente e pela API segura.'
+                    });
+                    if (!synced) {
+                        this.syncStatus.connected = false;
+                        this.syncStatus.message = 'Dados salvos localmente. Sincronizacao pendente.';
+                        this.applySyncStatus();
+                    }
                 } else {
                     this.syncStatus.connected = false;
                     this.syncStatus.message = 'Dados salvos localmente.';
+                    this.syncStatus.lastSyncAt = null;
+                    this.applySyncStatus();
                 }
+            }).catch((error) => {
+                console.error('Falha na fila de sincronizacao:', error);
+                this.syncStatus.connected = false;
+                this.syncStatus.message = 'Dados salvos localmente. Sincronizacao pendente.';
                 this.applySyncStatus();
             });
 
@@ -610,6 +626,10 @@
             merged.config.enderecoUf = String(merged.config.enderecoUf || '').trim().toUpperCase().slice(0, 2);
             merged.config.enderecoCep = String(merged.config.enderecoCep || '').trim();
             merged.config.email = String(merged.config.email || '').trim();
+            const metaUpdatedAt = this.toTimestamp(merged.meta.updatedAt);
+            const metaConfigUpdatedAt = this.toTimestamp(merged.meta.configUpdatedAt);
+            merged.meta.updatedAt = metaUpdatedAt ? new Date(metaUpdatedAt).toISOString() : null;
+            merged.meta.configUpdatedAt = metaConfigUpdatedAt ? new Date(metaConfigUpdatedAt).toISOString() : null;
             merged.config.fiscalPrinterProfile = String(merged.config.fiscalPrinterProfile || '').trim().toLowerCase();
             const nfceProfileRaw = String(
                 merged.config.fiscalPrinterProfileNfce
@@ -720,6 +740,197 @@
                 return 0;
             }
             return new Date(state.meta.updatedAt).getTime();
+        }
+
+        toTimestamp(value) {
+            if (!value) {
+                return 0;
+            }
+            const time = new Date(value).getTime();
+            return Number.isFinite(time) ? time : 0;
+        }
+
+        getRecordTimestamp(record, fields = []) {
+            if (!record || typeof record !== 'object') {
+                return 0;
+            }
+            return fields.reduce((max, field) => {
+                const candidate = this.toTimestamp(record[field]);
+                return candidate > max ? candidate : max;
+            }, 0);
+        }
+
+        createStateSignature(state) {
+            try {
+                return JSON.stringify(state || {});
+            } catch (_) {
+                return '';
+            }
+        }
+
+        configureAutoSync() {
+            this.stopAutoSync();
+            if (!this.isCloudEnabled()) {
+                return;
+            }
+            this.autoSyncTimer = window.setInterval(() => {
+                if (typeof navigator !== 'undefined' && navigator && navigator.onLine === false) {
+                    return;
+                }
+                this.syncNow({ silent: true }).catch(() => {});
+            }, AUTO_SYNC_INTERVAL_MS);
+        }
+
+        stopAutoSync() {
+            if (this.autoSyncTimer) {
+                window.clearInterval(this.autoSyncTimer);
+                this.autoSyncTimer = null;
+            }
+        }
+
+        mergeCollectionById(localItems, remoteItems, timestampFields = ['atualizadoEm', 'data', 'criadoEm']) {
+            const localMap = new Map((Array.isArray(localItems) ? localItems : []).map((item) => [item?.id, item]));
+            const remoteMap = new Map((Array.isArray(remoteItems) ? remoteItems : []).map((item) => [item?.id, item]));
+            const ids = new Set([...localMap.keys(), ...remoteMap.keys()].filter(Boolean));
+            const merged = [];
+
+            ids.forEach((id) => {
+                const local = localMap.get(id);
+                const remote = remoteMap.get(id);
+                if (local && !remote) {
+                    merged.push(local);
+                    return;
+                }
+                if (!local && remote) {
+                    merged.push(remote);
+                    return;
+                }
+
+                const localTs = this.getRecordTimestamp(local, timestampFields);
+                const remoteTs = this.getRecordTimestamp(remote, timestampFields);
+                merged.push(localTs >= remoteTs ? local : remote);
+            });
+
+            return merged;
+        }
+
+        applyMovementDeltaToStock(stock, movement) {
+            const qty = Number(movement?.qtd || 0);
+            const type = String(movement?.tipo || '').toLowerCase();
+            if (type === 'entrada') {
+                return stock + qty;
+            }
+            if (type === 'saida') {
+                return Math.max(0, stock - qty);
+            }
+            if (type === 'ajuste') {
+                return Math.max(0, qty);
+            }
+            return stock;
+        }
+
+        mergeProductsWithMovements(localState, remoteState, mergedMovimentos) {
+            const localProducts = Array.isArray(localState?.produtos) ? localState.produtos : [];
+            const remoteProducts = Array.isArray(remoteState?.produtos) ? remoteState.produtos : [];
+            const localMovements = Array.isArray(localState?.movimentos) ? localState.movimentos : [];
+            const remoteMovements = Array.isArray(remoteState?.movimentos) ? remoteState.movimentos : [];
+            const allIds = new Set([
+                ...localProducts.map((item) => item?.id).filter(Boolean),
+                ...remoteProducts.map((item) => item?.id).filter(Boolean)
+            ]);
+            const mergedByProduct = new Map();
+            (Array.isArray(mergedMovimentos) ? mergedMovimentos : []).forEach((movement) => {
+                const productId = movement?.produtoId;
+                if (!productId) {
+                    return;
+                }
+                if (!mergedByProduct.has(productId)) {
+                    mergedByProduct.set(productId, []);
+                }
+                mergedByProduct.get(productId).push(movement);
+            });
+
+            const mergedProducts = [];
+            allIds.forEach((productId) => {
+                const localProduct = localProducts.find((item) => item.id === productId) || null;
+                const remoteProduct = remoteProducts.find((item) => item.id === productId) || null;
+                if (!localProduct && !remoteProduct) {
+                    return;
+                }
+
+                const localTs = this.getRecordTimestamp(localProduct, ['atualizadoEm', 'criadoEm']);
+                const remoteTs = this.getRecordTimestamp(remoteProduct, ['atualizadoEm', 'criadoEm']);
+                const useLocal = localProduct && (!remoteProduct || localTs >= remoteTs);
+                const base = this.clone(useLocal ? localProduct : remoteProduct);
+                const baseMovements = (useLocal ? localMovements : remoteMovements)
+                    .filter((movement) => movement?.produtoId === productId);
+                const baseMovementIds = new Set(baseMovements.map((movement) => movement?.id).filter(Boolean));
+                const extraMovements = (mergedByProduct.get(productId) || [])
+                    .filter((movement) => movement?.id && !baseMovementIds.has(movement.id))
+                    .sort((a, b) => this.toTimestamp(a?.data) - this.toTimestamp(b?.data));
+
+                let stock = Number(base?.estoque || 0);
+                extraMovements.forEach((movement) => {
+                    stock = this.applyMovementDeltaToStock(stock, movement);
+                });
+
+                base.estoque = Number.isFinite(stock) ? stock : Number(base?.estoque || 0);
+                if (extraMovements.length) {
+                    const lastMovement = extraMovements[extraMovements.length - 1];
+                    const movementTs = this.toTimestamp(lastMovement?.data);
+                    const baseTs = this.getRecordTimestamp(base, ['atualizadoEm', 'criadoEm']);
+                    const updatedAtTs = Math.max(baseTs, movementTs);
+                    if (updatedAtTs) {
+                        base.atualizadoEm = new Date(updatedAtTs).toISOString();
+                    }
+                }
+
+                mergedProducts.push(base);
+            });
+
+            return mergedProducts;
+        }
+
+        mergeStates(localState, remoteState) {
+            const local = this.normalizeState(localState || this.clone(DEFAULT_STATE));
+            const remote = this.normalizeState(remoteState || this.clone(DEFAULT_STATE));
+            const mergedMovimentos = this.mergeCollectionById(local.movimentos, remote.movimentos, ['data']);
+            const merged = {
+                ...this.clone(DEFAULT_STATE),
+                ...local,
+                ...remote,
+                produtos: this.mergeProductsWithMovements(local, remote, mergedMovimentos),
+                vendas: this.mergeCollectionById(local.vendas, remote.vendas, ['atualizadoEm', 'data']),
+                notas: this.mergeCollectionById(local.notas, remote.notas, ['atualizadoEm', 'dataEmissao']),
+                movimentos: mergedMovimentos,
+                config: this.getRecordTimestamp(local.meta, ['configUpdatedAt', 'updatedAt']) >= this.getRecordTimestamp(remote.meta, ['configUpdatedAt', 'updatedAt'])
+                    ? local.config
+                    : remote.config,
+                meta: {
+                    ...this.clone(DEFAULT_STATE).meta,
+                    ...local.meta,
+                    ...remote.meta
+                }
+            };
+
+            const mergedUpdatedAt = Math.max(
+                this.toTimestamp(local.meta?.updatedAt),
+                this.toTimestamp(remote.meta?.updatedAt),
+                this.toTimestamp(local.meta?.configUpdatedAt),
+                this.toTimestamp(remote.meta?.configUpdatedAt)
+            );
+            if (mergedUpdatedAt) {
+                merged.meta.updatedAt = new Date(mergedUpdatedAt).toISOString();
+            }
+            const mergedConfigUpdatedAt = Math.max(
+                this.toTimestamp(local.meta?.configUpdatedAt),
+                this.toTimestamp(remote.meta?.configUpdatedAt)
+            );
+            if (mergedConfigUpdatedAt) {
+                merged.meta.configUpdatedAt = new Date(mergedConfigUpdatedAt).toISOString();
+            }
+
+            return this.normalizeState(merged);
         }
 
         generateId(prefix) {
@@ -965,6 +1176,14 @@
             if (!this.isCloudEnabled()) {
                 this.syncStatus.message = 'Modo local ativo.';
             }
+            if (typeof window !== 'undefined'
+                && window
+                && typeof window.dispatchEvent === 'function'
+                && typeof CustomEvent === 'function') {
+                window.dispatchEvent(new CustomEvent('easystore:sync-status', {
+                    detail: { ...this.syncStatus }
+                }));
+            }
         }
 
         async fetchRemoteState() {
@@ -972,10 +1191,10 @@
             return response && response.payload ? this.normalizeState(response.payload) : null;
         }
 
-        async persistRemoteState() {
+        async persistRemoteState(payload = this.state) {
             await this.request(`/api/state/${encodeURIComponent(this.connection.storeId)}`, {
                 method: 'PUT',
-                body: JSON.stringify({ payload: this.state })
+                body: JSON.stringify({ payload })
             });
         }
 

@@ -162,9 +162,18 @@
         this.renderCloudStatus();
         this.scheduleSalesStaticFit();
         window.setInterval(() => this.atualizarData(), 60000);
+        window.setInterval(() => this.renderCloudStatus(), 8000);
     }
 
     bindEvents() {
+        window.addEventListener('easystore:sync-status', () => this.renderCloudStatus());
+        window.addEventListener('online', () => {
+            if (db && typeof db.syncNow === 'function') {
+                db.syncNow({ silent: true }).finally(() => this.renderCloudStatus());
+            }
+        });
+        window.addEventListener('offline', () => this.renderCloudStatus());
+
         document.querySelectorAll('.menu-btn').forEach((button) => {
             button.addEventListener('click', (event) => {
                 const secao = event.currentTarget.dataset.section;

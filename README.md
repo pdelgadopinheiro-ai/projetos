@@ -27,6 +27,7 @@ Sistema de gestao comercial com frontend estatico e backend Node para sincroniza
 - Rodar localmente: `npm run desktop`
 - Gerar instalador: `npm run build:desktop`
 - Guia completo para multi-PC com Supabase: `docs/DESKTOP_APP_SUPABASE.md`
+- Multi-PC com computador central (LAN): suportado com fallback local automatico no backend quando o Supabase ficar indisponivel.
 
 ## Passo a passo para conectar
 

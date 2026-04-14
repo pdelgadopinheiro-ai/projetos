@@ -33,6 +33,7 @@ const PAYMENT_API_SECRET = (process.env.PAYMENT_API_SECRET || '').trim();
 const PAYMENT_LOG_PATH = path.join(__dirname, process.env.PAYMENT_LOG_PATH || 'data/payment-transactions.json');
 const PAYMENT_PROVIDER_CONFIG_PATH = path.join(__dirname, process.env.PAYMENT_PROVIDER_CONFIG_PATH || 'data/payment-provider-config.json');
 const PAYMENT_PROVIDER_CONFIG_JSON = parseJsonEnv(process.env.PAYMENT_PROVIDER_CONFIG_JSON || '{}');
+const LOCAL_CENTRAL_STATE_PATH = path.join(__dirname, process.env.LOCAL_CENTRAL_STATE_PATH || 'data/local-central-state.json');
 const RECEITA_NCM_URL = 'https://portalunico.siscomex.gov.br/classif/api/publico/nomenclatura/download/json?perfil=PUBLICO';
 const NCM_LOCAL_JSON_PATH = path.join(__dirname, process.env.NCM_LOCAL_JSON_PATH || 'Tabela_NCM_Vigente_20260331.json');
 const NCM_CACHE_TTL_MS = Number(process.env.NCM_CACHE_TTL_MS || 1000 * 60 * 60 * 12);
@@ -175,6 +176,7 @@ const server = http.createServer(async (req, res) => {
                 ok: true,
                 date: new Date().toISOString(),
                 supabaseConfigured: hasValidSupabaseConfig(),
+                stateBackend: hasValidSupabaseConfig() ? 'supabase+local-fallback' : 'local-central',
                 openaiConfigured: Boolean(OPENAI_API_KEY),
                 ncm: ncmStatus
             });
@@ -187,6 +189,7 @@ const server = http.createServer(async (req, res) => {
                 apiBaseUrl: '',
                 storeId: EASYSTORE_STORE_ID,
                 supabaseConfigured: hasValidSupabaseConfig(),
+                stateBackend: hasValidSupabaseConfig() ? 'supabase+local-fallback' : 'local-central',
                 openaiConfigured: Boolean(OPENAI_API_KEY),
                 payments: getPaymentRuntimeConfig(),
                 ncm: ncmStatus
@@ -295,19 +298,13 @@ const server = http.createServer(async (req, res) => {
         }
 
         if (url.pathname.startsWith('/api/state/')) {
-            if (!hasValidSupabaseConfig()) {
-                return sendJson(res, 500, {
-                    error: 'Backend sem configuracao valida do Supabase. Preencha SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY reais no arquivo .env.'
-                });
-            }
-
             const storeId = decodeURIComponent(url.pathname.replace('/api/state/', '')).trim();
             if (!storeId) {
                 return sendJson(res, 400, { error: 'storeId obrigatorio.' });
             }
 
             if (req.method === 'GET') {
-                const result = await fetchSupabaseState(storeId);
+                const result = await fetchSharedState(storeId);
                 return sendJson(res, 200, result || { storeId, payload: null, updatedAt: null });
             }
 
@@ -317,7 +314,7 @@ const server = http.createServer(async (req, res) => {
                     return sendJson(res, 400, { error: 'payload obrigatorio.' });
                 }
 
-                const result = await upsertSupabaseState(storeId, body.payload);
+                const result = await upsertSharedState(storeId, body.payload);
                 return sendJson(res, 200, result);
             }
 
@@ -353,6 +350,111 @@ server.on('error', (error) => {
 
 startServer(DEFAULT_PORT);
 
+function readLocalCentralStateStore() {
+    try {
+        if (!fs.existsSync(LOCAL_CENTRAL_STATE_PATH)) {
+            return {};
+        }
+        const raw = fs.readFileSync(LOCAL_CENTRAL_STATE_PATH, 'utf8');
+        const parsed = JSON.parse(raw);
+        return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch (error) {
+        console.error('Falha ao ler estado local central:', error);
+        return {};
+    }
+}
+
+function writeLocalCentralStateStore(store) {
+    fs.mkdirSync(path.dirname(LOCAL_CENTRAL_STATE_PATH), { recursive: true });
+    fs.writeFileSync(LOCAL_CENTRAL_STATE_PATH, JSON.stringify(store, null, 2), 'utf8');
+}
+
+function fetchLocalCentralState(storeId) {
+    const store = readLocalCentralStateStore();
+    const record = store[storeId];
+    if (!record || typeof record !== 'object') {
+        return null;
+    }
+    return {
+        storeId,
+        payload: record.payload || null,
+        updatedAt: record.updatedAt || null,
+        source: 'local-central'
+    };
+}
+
+function upsertLocalCentralState(storeId, payload, updatedAt = new Date().toISOString()) {
+    const store = readLocalCentralStateStore();
+    store[storeId] = {
+        payload,
+        updatedAt
+    };
+    writeLocalCentralStateStore(store);
+    return {
+        ok: true,
+        storeId,
+        updatedAt,
+        source: 'local-central'
+    };
+}
+
+function toTimestamp(value) {
+    if (!value) {
+        return 0;
+    }
+    const timestamp = new Date(value).getTime();
+    return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+async function fetchSharedState(storeId) {
+    const localState = fetchLocalCentralState(storeId);
+    let supabaseState = null;
+
+    if (hasValidSupabaseConfig()) {
+        try {
+            supabaseState = await fetchSupabaseState(storeId);
+        } catch (error) {
+            console.error(`Falha ao buscar estado no Supabase (${storeId}), usando fallback local:`, error.message || error);
+        }
+    }
+
+    if (localState && supabaseState) {
+        const localTs = toTimestamp(localState.updatedAt);
+        const supabaseTs = toTimestamp(supabaseState.updatedAt);
+        if (localTs > supabaseTs) {
+            if (hasValidSupabaseConfig()) {
+                upsertSupabaseState(storeId, localState.payload, localState.updatedAt).catch((error) => {
+                    console.error(`Falha ao reconciliar estado local no Supabase (${storeId}):`, error.message || error);
+                });
+            }
+            return localState;
+        }
+        return supabaseState;
+    }
+
+    return supabaseState || localState || null;
+}
+
+async function upsertSharedState(storeId, payload) {
+    const updatedAt = new Date().toISOString();
+    const localResult = upsertLocalCentralState(storeId, payload, updatedAt);
+
+    if (!hasValidSupabaseConfig()) {
+        return localResult;
+    }
+
+    try {
+        const supabaseResult = await upsertSupabaseState(storeId, payload, updatedAt);
+        return {
+            ...supabaseResult,
+            source: 'supabase'
+        };
+    } catch (error) {
+        console.error(`Falha ao salvar estado no Supabase (${storeId}), mantendo estado local central:`, error.message || error);
+        return localResult;
+    }
+}
+
 async function fetchSupabaseState(storeId) {
     const response = await supabaseRequest(
         `/rest/v1/easy_store_state?select=store_id,payload,updated_at&store_id=eq.${encodeURIComponent(storeId)}&limit=1`
@@ -366,12 +468,12 @@ async function fetchSupabaseState(storeId) {
     return {
         storeId: item.store_id,
         payload: item.payload,
-        updatedAt: item.updated_at
+        updatedAt: item.updated_at,
+        source: 'supabase'
     };
 }
 
-async function upsertSupabaseState(storeId, payload) {
-    const updatedAt = new Date().toISOString();
+async function upsertSupabaseState(storeId, payload, updatedAt = new Date().toISOString()) {
     const body = [{
         store_id: storeId,
         payload,
@@ -386,7 +488,7 @@ async function upsertSupabaseState(storeId, payload) {
         body: JSON.stringify(body)
     });
 
-    return { ok: true, storeId, updatedAt };
+    return { ok: true, storeId, updatedAt, source: 'supabase' };
 }
 
 function startServer(initialPort) {
