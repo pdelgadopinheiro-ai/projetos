@@ -451,7 +451,7 @@
                         </div>
                         <div class="form-group">
                             <label for="cfg-fiscal-printer-name-nfe">Nome da impressora NF-e (opcional)</label>
-                            <input type="text" id="cfg-fiscal-printer-name-nfe" placeholder="Ex: HP LaserJet Escritório">
+                            <input type="text" id="cfg-fiscal-printer-name-nfe" list="cfg-fiscal-printers-list" placeholder="Ex: HP LaserJet Escritório">
                         </div>
                         <div class="form-group">
                             <label for="cfg-fiscal-printer-profile-nfce">Impressora da NFC-e (varejo)</label>
@@ -462,9 +462,10 @@
                         </div>
                         <div class="form-group">
                             <label for="cfg-fiscal-printer-name-nfce">Nome da impressora térmica (opcional)</label>
-                            <input type="text" id="cfg-fiscal-printer-name-nfce" placeholder="Ex: Bematech MP-4200 TH">
+                            <input type="text" id="cfg-fiscal-printer-name-nfce" list="cfg-fiscal-printers-list" placeholder="Ex: Bematech MP-4200 TH">
                         </div>
-                        <small class="field-help">O navegador abre a janela de impressão. Selecione a impressora indicada para cada tipo de documento fiscal.</small>
+                        <datalist id="cfg-fiscal-printers-list"></datalist>
+                        <small class="field-help">No app desktop, a impressão fiscal sai automaticamente na impressora configurada. No navegador, o sistema usa a impressão padrão sem abrir uma segunda tela.</small>
                         <button class="btn btn-primary" id="btn-salvar-cfg">Salvar Loja</button>
                     </section>
 

@@ -20,6 +20,8 @@
         this.scanInputTimer = null;
         this.lastFiscalNoteHtml = '';
         this.lastFiscalNotePrintStyles = '';
+        this.lastFiscalPrintPayload = null;
+        this.desktopPrinters = [];
         this.moneyFormatter = new Intl.NumberFormat('pt-BR', {
             style: 'currency',
             currency: 'BRL'
@@ -128,6 +130,7 @@
             cfgFiscalPrinterNameNfe: document.getElementById('cfg-fiscal-printer-name-nfe'),
             cfgFiscalPrinterProfileNfce: document.getElementById('cfg-fiscal-printer-profile-nfce'),
             cfgFiscalPrinterNameNfce: document.getElementById('cfg-fiscal-printer-name-nfce'),
+            cfgFiscalPrintersList: document.getElementById('cfg-fiscal-printers-list'),
             cfgMaqProvider: document.getElementById('cfg-maq-provider'),
             cfgMaqNome: document.getElementById('cfg-maq-nome'),
             cfgMaqModelo: document.getElementById('cfg-maq-modelo'),
@@ -147,6 +150,7 @@
     async init() {
         await db.init();
         this.carregarConfig();
+        await this.loadDesktopPrinters();
         this.atualizarData();
         this.forceSalesOnlySection();
         this.renderCurrentSection();
@@ -1224,35 +1228,324 @@
         `;
     }
 
-    showFiscalNotePrintout(nota, printWindow = null) {
-        const printerRoute = this.getFiscalPrinterRouteForNote(nota);
-        const effectivePrinterProfile = printerRoute.profile;
-        const isNfe = String(nota?.tipo || '').toUpperCase() === 'NF-E';
-        const routingBanner = isNfe ? '' : this.buildFiscalPrintRoutingBanner(printerRoute);
-        const bodyContent = `${routingBanner}${this.buildThermalFiscalNoteMarkup(nota, effectivePrinterProfile)}`;
-        const printStyles = this.getThermalFiscalNotePrintStyles(effectivePrinterProfile);
+    isDesktopPrintAvailable() {
+        return Boolean(window.desktopBridge && typeof window.desktopBridge.printFiscalDocument === 'function');
+    }
 
-        const windowToUse = printWindow || window.open('', `NotaFiscal${nota.id}`);
-        if (!windowToUse) {
-            this.mostrarMsg('Popup bloqueado. A nota fiscal foi gerada e está disponível para visualização.', 'warning');
-            this.showFiscalNoteModal(bodyContent, printStyles);
+    isDesktopPrinterListAvailable() {
+        return Boolean(window.desktopBridge && typeof window.desktopBridge.listPrinters === 'function');
+    }
+
+    async loadDesktopPrinters() {
+        if (!this.isDesktopPrinterListAvailable()) {
+            this.desktopPrinters = [];
+            this.renderFiscalPrinterDatalist();
             return;
         }
 
-        windowToUse.document.write(`
+        try {
+            const result = await window.desktopBridge.listPrinters();
+            this.desktopPrinters = Array.isArray(result?.printers) ? result.printers : [];
+            this.renderFiscalPrinterDatalist();
+        } catch (error) {
+            console.warn('Nao foi possivel listar impressoras do desktop:', error);
+            this.desktopPrinters = [];
+            this.renderFiscalPrinterDatalist();
+        }
+    }
+
+    renderFiscalPrinterDatalist() {
+        if (!this.elements.cfgFiscalPrintersList) {
+            return;
+        }
+
+        this.elements.cfgFiscalPrintersList.innerHTML = this.desktopPrinters.map((printer) => {
+            const name = String(printer.name || printer.displayName || '').trim();
+            if (!name) {
+                return '';
+            }
+            const displayName = String(printer.displayName || name).trim();
+            const label = displayName && displayName !== name ? displayName : String(printer.description || '').trim();
+            const labelAttr = label ? ` label="${this.escapeHtml(label)}"` : '';
+            return `<option value="${this.escapeHtml(name)}"${labelAttr}></option>`;
+        }).join('');
+    }
+
+    buildFiscalPrintDocument(title, bodyContent, printStyles) {
+        return `
+            <!doctype html>
             <html>
                 <head>
                     <meta charset="UTF-8">
-                    <title>${nota.tipo} No ${nota.numero}</title>
+                    <meta name="viewport" content="width=device-width, initial-scale=1">
+                    <title>${this.escapeHtml(title || 'Nota Fiscal')}</title>
                     <style>${printStyles}</style>
                 </head>
                 <body>
                     ${bodyContent}
-                    <script>window.onload = function() { window.print(); window.onafterprint = function() { window.close(); }; };</script>
                 </body>
             </html>
-        `);
-        windowToUse.document.close();
+        `;
+    }
+
+    buildFiscalPrintPayload(nota) {
+        const printerRoute = this.getFiscalPrinterRouteForNote(nota);
+        const effectivePrinterProfile = printerRoute.profile;
+        const bodyContent = this.buildThermalFiscalNoteMarkup(nota, effectivePrinterProfile);
+        const printStyles = this.getThermalFiscalNotePrintStyles(effectivePrinterProfile);
+        const title = `${nota.tipo} No ${nota.numero}`;
+
+        return {
+            notaId: nota.id,
+            documentType: String(nota.tipo || 'Nota Fiscal'),
+            title,
+            content: bodyContent,
+            printStyles,
+            html: this.buildFiscalPrintDocument(title, bodyContent, printStyles),
+            profile: effectivePrinterProfile,
+            printerName: printerRoute.printerName || '',
+            printerLabel: printerRoute.targetLabel || '',
+            route: printerRoute
+        };
+    }
+
+    async showFiscalNotePrintout(nota) {
+        const payload = this.buildFiscalPrintPayload(nota);
+        this.lastFiscalPrintPayload = payload;
+        this.lastFiscalNoteHtml = payload.content;
+        this.lastFiscalNotePrintStyles = payload.printStyles;
+
+        const result = await this.printFiscalPayload(payload);
+        if (!result.ok) {
+            this.showFiscalNoteModal(payload.content, payload.printStyles, payload);
+        }
+    }
+
+    async printFiscalPayload(payload, { showSuccess = true } = {}) {
+        if (!payload?.html) {
+            return { ok: false, error: 'Documento fiscal vazio.' };
+        }
+
+        if (this.isDesktopPrintAvailable()) {
+            const desktopResult = await this.tryPrintFiscalPayloadOnDesktop(payload);
+            if (desktopResult.ok) {
+                if (showSuccess) {
+                    this.mostrarMsg(`${payload.documentType} enviada para ${desktopResult.printerName || 'a impressora padrão'}.`, 'success');
+                }
+                return desktopResult;
+            }
+
+            this.mostrarMsg(`Impressão automática indisponível: ${desktopResult.error} Abrindo impressão manual.`, 'warning');
+        }
+
+        let browserResult = await this.printInlineInCurrentWindow(payload);
+        if (!browserResult.ok) {
+            const legacyResult = await this.printHtmlInHiddenFrame(payload.html, payload.title);
+            if (legacyResult.ok) {
+                browserResult = legacyResult;
+            } else if (legacyResult.error) {
+                browserResult = legacyResult;
+            }
+        }
+        if (browserResult.ok) {
+            if (showSuccess && !this.isDesktopPrintAvailable()) {
+                this.mostrarMsg(`${payload.documentType} preparada para impressão.`, 'success');
+            }
+            return browserResult;
+        }
+
+        this.mostrarMsg(browserResult.error || 'Não foi possível iniciar a impressão.', 'warning');
+        return browserResult;
+    }
+
+    async tryPrintFiscalPayloadOnDesktop(payload) {
+        try {
+            const result = await window.desktopBridge.printFiscalDocument({
+                html: payload.html,
+                title: payload.title,
+                profile: payload.profile,
+                printerName: payload.printerName,
+                documentType: payload.documentType
+            });
+            return result?.ok
+                ? result
+                : { ok: false, error: result?.error || 'Falha ao enviar para a impressora.' };
+        } catch (error) {
+            return { ok: false, error: error?.message || 'Falha ao acionar a impressão automática.' };
+        }
+    }
+
+    async waitForPrintFrameImages(frameDocument) {
+        const images = Array.from(frameDocument?.images || []);
+        if (!images.length) {
+            return;
+        }
+
+        await Promise.race([
+            Promise.all(images.map((image) => {
+                if (image.complete) {
+                    return Promise.resolve();
+                }
+                return new Promise((resolve) => {
+                    image.addEventListener('load', resolve, { once: true });
+                    image.addEventListener('error', resolve, { once: true });
+                });
+            })),
+            new Promise((resolve) => window.setTimeout(resolve, 2500))
+        ]);
+    }
+
+    async waitForPrintContainerImages(container) {
+        const images = Array.from(container?.querySelectorAll?.('img') || []);
+        if (!images.length) {
+            return;
+        }
+
+        await Promise.race([
+            Promise.all(images.map((image) => {
+                if (image.complete) {
+                    return Promise.resolve();
+                }
+                return new Promise((resolve) => {
+                    image.addEventListener('load', resolve, { once: true });
+                    image.addEventListener('error', resolve, { once: true });
+                });
+            })),
+            new Promise((resolve) => window.setTimeout(resolve, 2500))
+        ]);
+    }
+
+    async printInlineInCurrentWindow(payload) {
+        const hostId = 'fiscal-inline-print-host';
+        const styleId = 'fiscal-inline-print-style';
+        const hostExisting = document.getElementById(hostId);
+        const styleExisting = document.getElementById(styleId);
+        if (hostExisting) {
+            hostExisting.remove();
+        }
+        if (styleExisting) {
+            styleExisting.remove();
+        }
+
+        const host = document.createElement('section');
+        host.id = hostId;
+        host.setAttribute('aria-hidden', 'true');
+        host.style.position = 'fixed';
+        host.style.left = '-10000px';
+        host.style.top = '0';
+        host.style.width = '1px';
+        host.style.height = '1px';
+        host.style.overflow = 'hidden';
+        host.style.opacity = '0';
+        host.innerHTML = payload.content || '';
+
+        const printStyle = document.createElement('style');
+        printStyle.id = styleId;
+        printStyle.media = 'print';
+        printStyle.textContent = `
+            ${payload.printStyles || ''}
+            body > * {
+                display: none !important;
+            }
+            #${hostId} {
+                display: block !important;
+                position: static !important;
+                left: auto !important;
+                top: auto !important;
+                width: auto !important;
+                height: auto !important;
+                overflow: visible !important;
+                opacity: 1 !important;
+                margin: 0 !important;
+            }
+        `;
+
+        document.body.appendChild(host);
+        document.head.appendChild(printStyle);
+
+        try {
+            await new Promise((resolve) => window.setTimeout(resolve, 80));
+            await this.waitForPrintContainerImages(host);
+
+            const cleanup = () => {
+                window.setTimeout(() => {
+                    if (host.parentNode) {
+                        host.remove();
+                    }
+                    if (printStyle.parentNode) {
+                        printStyle.remove();
+                    }
+                }, 350);
+            };
+            window.addEventListener('afterprint', cleanup, { once: true });
+            window.setTimeout(cleanup, 60000);
+            window.print();
+            return { ok: true, printerName: 'impressora selecionada', manual: true };
+        } catch (error) {
+            if (host.parentNode) {
+                host.remove();
+            }
+            if (printStyle.parentNode) {
+                printStyle.remove();
+            }
+            return { ok: false, error: error?.message || 'Falha ao iniciar impressao nesta tela.' };
+        }
+    }
+
+    async printHtmlInHiddenFrame(html, title = 'Impressao') {
+        const existingFrame = document.getElementById('fiscal-print-frame');
+        if (existingFrame) {
+            existingFrame.remove();
+        }
+
+        const frame = document.createElement('iframe');
+        frame.id = 'fiscal-print-frame';
+        frame.title = title;
+        frame.setAttribute('aria-hidden', 'true');
+        frame.style.position = 'fixed';
+        frame.style.right = '0';
+        frame.style.bottom = '0';
+        frame.style.width = '0';
+        frame.style.height = '0';
+        frame.style.border = '0';
+        frame.style.opacity = '0';
+        frame.style.pointerEvents = 'none';
+        document.body.appendChild(frame);
+
+        try {
+            const frameWindow = frame.contentWindow;
+            const frameDocument = frame.contentDocument || frameWindow?.document;
+            if (!frameWindow || !frameDocument) {
+                frame.remove();
+                return { ok: false, error: 'Nao foi possivel preparar a impressao.' };
+            }
+
+            frameDocument.open();
+            frameDocument.write(html);
+            frameDocument.close();
+
+            await new Promise((resolve) => window.setTimeout(resolve, 120));
+            await this.waitForPrintFrameImages(frameDocument);
+
+            const cleanup = () => {
+                window.setTimeout(() => {
+                    if (frame.parentNode) {
+                        frame.remove();
+                    }
+                }, 800);
+            };
+            frameWindow.onafterprint = cleanup;
+            window.setTimeout(cleanup, 60000);
+
+            frameWindow.focus();
+            frameWindow.print();
+            return { ok: true, printerName: 'impressora selecionada', manual: true };
+        } catch (error) {
+            if (frame.parentNode) {
+                frame.remove();
+            }
+            return { ok: false, error: error?.message || 'Falha ao iniciar impressao.' };
+        }
     }
 
     normalizeFiscalPrinterProfile(value) {
@@ -1284,6 +1577,7 @@
             const target = nfePrinterName || 'Impressora comum A4';
             return {
                 profile: nfeProfile,
+                printerName: nfePrinterName,
                 title: 'Destino NF-e (atacado)',
                 targetLabel: target,
                 message: 'NF-e deve ser impressa apenas em impressora comum (papel A4).'
@@ -1295,6 +1589,7 @@
             const target = nfcePrinterName || `Impressora ${papelTermico}`;
             return {
                 profile: nfceProfile,
+                printerName: nfcePrinterName,
                 title: 'Destino NFC-e (varejo)',
                 targetLabel: target,
                 message: 'NFC-e deve ser impressa apenas em impressora térmica.'
@@ -1303,6 +1598,7 @@
 
         return {
             profile: this.normalizeFiscalPrinterProfile(config.fiscalPrinterProfile || 'auto'),
+            printerName: '',
             title: 'Destino de impressão',
             targetLabel: '',
             message: 'Confirme a impressora correta antes de imprimir.'
@@ -1349,9 +1645,9 @@
                 pageMargin: '0',
                 bodyWidth: '80mm',
                 bodyMaxWidth: '80mm',
-                bodyPadding: '2.5mm',
-                receiptWidth: '74mm',
-                receiptMaxWidth: '74mm',
+                bodyPadding: '1.5mm 2mm 8mm',
+                receiptWidth: '72mm',
+                receiptMaxWidth: '72mm',
                 baseFont: '11px',
                 lineHeight: '1.25',
                 titleFont: '14px',
@@ -1363,9 +1659,9 @@
                 pageMargin: '0',
                 bodyWidth: '58mm',
                 bodyMaxWidth: '58mm',
-                bodyPadding: '2mm',
-                receiptWidth: '54mm',
-                receiptMaxWidth: '54mm',
+                bodyPadding: '1.5mm 2mm 8mm',
+                receiptWidth: '50mm',
+                receiptMaxWidth: '50mm',
                 baseFont: '10px',
                 lineHeight: '1.2',
                 titleFont: '12px',
@@ -1375,11 +1671,11 @@
             a4: {
                 pageSize: 'A4 portrait',
                 pageMargin: '8mm',
-                bodyWidth: '210mm',
-                bodyMaxWidth: '210mm',
+                bodyWidth: 'auto',
+                bodyMaxWidth: '194mm',
                 bodyPadding: '0',
-                receiptWidth: '190mm',
-                receiptMaxWidth: '190mm',
+                receiptWidth: '194mm',
+                receiptMaxWidth: '194mm',
                 baseFont: '12px',
                 lineHeight: '1.35',
                 titleFont: '18px',
@@ -2070,6 +2366,16 @@
                 line-height: 1.3;
             }
 
+            .fiscal-doc-cupom {
+                padding-bottom: 6mm;
+            }
+
+            .fiscal-doc-cupom::after {
+                content: '';
+                display: block;
+                height: 6mm;
+            }
+
             .cupom-narrow .fiscal-item-top,
             .cupom-narrow .fiscal-item-bottom,
             .cupom-narrow .fiscal-totals div {
@@ -2375,23 +2681,26 @@
             }
         `;
     }
-    showFiscalNoteModal(content, printStyles = '') {
+    showFiscalNoteModal(content, printStyles = '', printPayload = null) {
         if (!this.elements.fiscalNoteModal || !this.elements.fiscalNoteContent) {
             return;
         }
         this.lastFiscalNoteHtml = content;
         this.lastFiscalNotePrintStyles = printStyles;
+        if (printPayload) {
+            this.lastFiscalPrintPayload = printPayload;
+        }
         this.elements.fiscalNoteContent.innerHTML = `
             ${content}
             <div style="margin-top: 16px; font-size: 0.95rem; color: #555;">
-                <p>O popup de impressão foi bloqueado. Clique em Imprimir para abrir a nota em uma nova janela.</p>
+                <p>A impressão automática não foi concluída. Clique em Imprimir para tentar novamente sem abrir uma segunda tela.</p>
             </div>
         `;
         this.elements.fiscalNoteModal.classList.add('show');
         this.elements.fiscalNoteModal.setAttribute('aria-hidden', 'false');
     }
 
-    printFiscalNoteFromModal() {
+    async printFiscalNoteFromModal() {
         const content = this.lastFiscalNoteHtml || this.elements.fiscalNoteContent?.innerHTML;
         const config = db.getConfig ? db.getConfig() : {};
         const fallbackProfile = this.normalizeNfcePrinterProfile(config.fiscalPrinterProfileNfce || config.fiscalPrinterProfile);
@@ -2400,26 +2709,21 @@
             return;
         }
 
-        const printWindow = window.open('', 'NotaFiscalPrint');
-        if (!printWindow) {
-            this.mostrarMsg('Permita popups para imprimir a nota fiscal.', 'warning');
-            return;
-        }
+        const payload = this.lastFiscalPrintPayload || {
+            documentType: 'Nota Fiscal',
+            title: 'Nota Fiscal',
+            content,
+            printStyles,
+            html: this.buildFiscalPrintDocument('Nota Fiscal', content, printStyles),
+            profile: fallbackProfile,
+            printerName: '',
+            printerLabel: ''
+        };
 
-        printWindow.document.write(`
-            <html>
-                <head>
-                    <meta charset="UTF-8">
-                    <title>Nota Fiscal</title>
-                    <style>${printStyles}</style>
-                </head>
-                <body>
-                    ${content}
-                    <script>window.onload = function() { window.print(); window.onafterprint = function() { window.close(); }; };</script>
-                </body>
-            </html>
-        `);
-        printWindow.document.close();
+        const result = await this.printFiscalPayload(payload);
+        if (result.ok) {
+            this.closeFiscalNoteModal();
+        }
     }
 
     closeFiscalNoteModal() {
@@ -2433,6 +2737,7 @@
         }
         this.lastFiscalNoteHtml = null;
         this.lastFiscalNotePrintStyles = '';
+        this.lastFiscalPrintPayload = null;
     }
 
     buildNfeAccessKeyBarcodeSvg(
@@ -4073,11 +4378,6 @@
                 }
                 pix = this.buildPixPayment(config, total);
             }
-            const notaWindow = window.open('', 'NotaFiscal');
-            if (!notaWindow) {
-                this.mostrarMsg('Permita popups para imprimir a nota fiscal.', 'warning');
-            }
-
             const { venda, nota } = await db.addVenda({
                 itens: this.vendaAtual,
                 total,
@@ -4133,7 +4433,7 @@
                 }
             }
 
-            this.showFiscalNotePrintout(nota, notaWindow);
+            await this.showFiscalNotePrintout(nota);
             this.cancelarVenda({ fromFinalize: true });
             this.refreshDataViews();
         } catch (error) {

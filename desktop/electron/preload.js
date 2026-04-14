@@ -12,5 +12,11 @@ contextBridge.exposeInMainWorld('desktopBridge', {
     },
     openExternal(url) {
         return ipcRenderer.invoke('desktop:open-external', url);
+    },
+    listPrinters() {
+        return ipcRenderer.invoke('desktop:list-printers');
+    },
+    printFiscalDocument(payload) {
+        return ipcRenderer.invoke('desktop:print-fiscal-document', payload);
     }
 });
